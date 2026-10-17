@@ -1,0 +1,40 @@
+name: Unbreakable Pipeline & Security CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-borders-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Security Check — Ensure No Private Keys or .data Files Committed
+        run: |
+          if git ls-files | grep -E '(\.env|\.data/|wallet\.json)'; then
+            echo "FATAL: Sensitive .env or .data wallet files tracked in Git!"
+            exit 1
+          fi
+          echo "Security check passed: No sensitive files tracked."
+
+      - name: Install Global OKX Agent Trade Kit CLI
+        run: npm install -g @okx_ai/okx-trade-cli || true
+
+      - name: Install Project Dependencies & Build All Packages
+        run: |
+          npm install
+          npm run build
+
+      - name: Verify Avalanche Smart Contract Exists
+        run: |
+          test -f contracts/GridSurgeonRegistry.sol
+          grep -q "contract GridSurgeonRegistry" contracts/GridSurgeonRegistry.sol

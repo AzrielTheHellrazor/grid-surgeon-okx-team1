@@ -1,0 +1,296 @@
+{
+  "contractName": "GridSurgeonRegistry",
+  "compiler": "0.8.20",
+  "abi": [
+    {
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "active",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "CircuitBreakerToggled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "index",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum GridSurgeonRegistry.MarketRegime",
+          "name": "regime",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "int256",
+          "name": "trapDivergenceScoreBps",
+          "type": "int256"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "okxAlgoOrOrdId",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "navUsdtE2",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "reasoningHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "DecisionAnchored",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "string",
+          "name": "okxAlgoId",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newMinPxE4",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newMaxPxE4",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        }
+      ],
+      "name": "GridSurgeryPerformed",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "agentOperator",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "decisionHistory",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "timestamp",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum GridSurgeonRegistry.MarketRegime",
+          "name": "regime",
+          "type": "uint8"
+        },
+        {
+          "internalType": "int256",
+          "name": "trapDivergenceScoreBps",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "avaxPriceE4",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "navUsdtE2",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "lockedEarnUsdtE2",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "okxAlgoOrOrdId",
+          "type": "string"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "reasoningHash",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "emergencyCircuitBreaker",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "maxAllowedLeverage",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum GridSurgeonRegistry.MarketRegime",
+          "name": "_regime",
+          "type": "uint8"
+        },
+        {
+          "internalType": "int256",
+          "name": "_trapScoreBps",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_avaxPriceE4",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_navUsdtE2",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_lockedEarnUsdtE2",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "_okxAlgoOrOrdId",
+          "type": "string"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_reasoningHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "recordDecision",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_okxAlgoId",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_newMinPxE4",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_newMaxPxE4",
+          "type": "uint256"
+        }
+      ],
+      "name": "recordGridSurgery",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "_active",
+          "type": "bool"
+        }
+      ],
+      "name": "setCircuitBreaker",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "totalDecisions",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60a060405260055f556001805460ff19169055348015601c575f5ffd5b5033608052608051610a6561004d5f395f8181608e015281816102560152818161031101526105420152610a655ff3fe608060405234801561000f575f5ffd5b5060043610610085575f3560e01c806374b044db1161005857806374b044db1461011b5780638c7e74751461012e578063b02c35c614610136578063c6d95db014610149575f5ffd5b806308de5e91146100895780630c96a61a146100cd578063276c3467146100df5780634250644914610106575b5f5ffd5b6100b07f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b6002545b6040519081526020016100c4565b6100f26100ed366004610650565b610166565b6040516100c498979695949392919061069b565b61011961011436600461070d565b61024b565b005b6100d1610129366004610778565b610305565b6100d15f5481565b6101196101443660046107f9565b610537565b6001546101569060ff1681565b60405190151581526020016100c4565b60028181548110610175575f80fd5b905f5260205f2090600802015f91509050805f015490806001015f9054906101000a900460ff16908060020154908060030154908060040154908060050154908060060180546101c490610846565b80601f01602080910402602001604051908101604052809291908181526020018280546101f090610846565b801561023b5780601f106102125761010080835404028352916020019161023b565b820191905f5260205f20905b81548152906001019060200180831161021e57829003601f168201915b5050505050908060070154905088565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146102b95760405162461bcd60e51b815260206004820152600e60248201526d139bdd08185d5d1a1bdc9a5e995960921b60448201526064015b60405180910390fd5b6001805460ff1916821515908117909155604080519182524260208301527f6b45c574a531f8f04b78493fc4ae5463dbe22922b2dea39ae53a3cdb01310a73910160405180910390a150565b5f336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146103755760405162461bcd60e51b8152602060048201526014602482015273139bdd08185d5d1a1bdc9a5e9959081859d95b9d60621b60448201526064016102b0565b60015460ff16156103c15760405162461bcd60e51b81526020600482015260166024820152754369726375697420627265616b65722061637469766560501b60448201526064016102b0565b60026040518061010001604052804281526020018b60048111156103e7576103e7610667565b81526020018a815260200189815260200188815260200187815260200186868080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201829052509385525050506020918201869052835460018181018655948252908290208351600890920201908155908201518184018054939492939192909160ff19169083600481111561048657610486610667565b021790555060408201516002820155606082015160038201556080820151600482015560a0820151600582015560c082015160068201906104c790826108e9565b5060e091909101516007909101556002545f906104e6906001906109a8565b9050807f56a87605a49d3be728fc093af818e2493fa24ab25792ba27e9a134a739f59b108b8b88888c89604051610522969594939291906109cd565b60405180910390a29998505050505050505050565b336001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016146105a65760405162461bcd60e51b8152602060048201526014602482015273139bdd08185d5d1a1bdc9a5e9959081859d95b9d60621b60448201526064016102b0565b60015460ff16156105f25760405162461bcd60e51b81526020600482015260166024820152754369726375697420627265616b65722061637469766560501b60448201526064016102b0565b8383604051610602929190610a20565b60408051918290038220848352602083018490524283830152905190917f3f8a69792825c7eb92ec4f5fa02090619c64ee2a2b7b12e7e64b0a87367a163a919081900360600190a250505050565b5f60208284031215610660575f5ffd5b5035919050565b634e487b7160e01b5f52602160045260245ffd5b6005811061069757634e487b7160e01b5f52602160045260245ffd5b9052565b8881526106ab602082018961067b565b8660408201528560608201528460808201528360a082015261010060c08201525f835180610100840152806020860161012085015e5f6101208285010152610120601f19601f8301168401019150508260e08301529998505050505050505050565b5f6020828403121561071d575f5ffd5b8135801515811461072c575f5ffd5b9392505050565b5f5f83601f840112610743575f5ffd5b50813567ffffffffffffffff81111561075a575f5ffd5b602083019150836020828501011115610771575f5ffd5b9250929050565b5f5f5f5f5f5f5f5f60e0898b03121561078f575f5ffd5b88356005811061079d575f5ffd5b97506020890135965060408901359550606089013594506080890135935060a089013567ffffffffffffffff8111156107d4575f5ffd5b6107e08b828c01610733565b999c989b50969995989497949560c00135949350505050565b5f5f5f5f6060858703121561080c575f5ffd5b843567ffffffffffffffff811115610822575f5ffd5b61082e87828801610733565b90989097506020870135966040013595509350505050565b600181811c9082168061085a57607f821691505b60208210810361087857634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52604160045260245ffd5b601f8211156108e457828211156108e457805f5260205f20601f840160051c60208510156108bd57505f5b90810190601f840160051c035f5b818110156108e0575f838201556001016108cb565b5050505b505050565b815167ffffffffffffffff8111156109035761090361087e565b610917816109118454610846565b84610892565b6020601f821160018114610949575f83156109325750848201515b5f19600385901b1c1916600184901b1784556109a1565b5f84815260208120601f198516915b828110156109785787850151825560209485019460019092019101610958565b508482101561099557868401515f19600387901b60f8161c191681555b505060018360011b0184555b5050505050565b818103818111156109c757634e487b7160e01b5f52601160045260245ffd5b92915050565b6109d7818861067b565b85602082015260a060408201528360a0820152838560c08301375f60c085830101525f60c0601f19601f8701168301019050836060830152826080830152979650505050505050565b818382375f910190815291905056fea2646970667358221220e51ba148c5bb8057b9f6c1dfe722cb39f0650e8a05cbb427e0b9e0a5767510a164736f6c63430008250033"
+}
