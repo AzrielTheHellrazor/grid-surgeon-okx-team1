@@ -480,7 +480,6 @@ export function App() {
   const [expandedCliId, setExpandedCliId] = useState<string | null>(null);
   const [cliSkillFilter, setCliSkillFilter] = useState<string>('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [walletStatusMsg, setWalletStatusMsg] = useState<string | null>(null);
   const [togglingBreaker, setTogglingBreaker] = useState<boolean>(false);
   const [verifyingProof, setVerifyingProof] = useState<boolean>(false);
   const [proofVerifiedMsg, setProofVerifiedMsg] = useState<string | null>(null);
@@ -663,54 +662,6 @@ export function App() {
     navigator.clipboard.writeText(value);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
-  };
-
-  const handleBrowserWalletAnchor = async () => {
-    if (!cycle) return;
-    const anchor = cycle.border4Anchor.anchorRecord;
-    if (!window.ethereum) {
-      copyText('calldata', anchor.encodedRecordDecisionCalldata);
-      setWalletStatusMsg('Calldata copied');
-      return;
-    }
-
-    try {
-      setWalletStatusMsg('Connecting wallet...');
-      const accounts = (await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      })) as string[];
-      if (!accounts || accounts.length === 0) return;
-
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0xa869' }],
-        });
-      } catch {
-        // stay on current chain
-      }
-
-      const txHash = (await window.ethereum.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: accounts[0],
-            to: cycle.border4Anchor.contractInfo.address,
-            data: anchor.encodedRecordDecisionCalldata,
-          },
-        ],
-      })) as string;
-
-      await fetch(`${API_BASE}/contract`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anchorId: anchor.id, txHash }),
-      });
-      setWalletStatusMsg(`Tx: ${txHash.slice(0, 14)}...`);
-      fetchStatus();
-    } catch {
-      setWalletStatusMsg('Cancelled');
-    }
   };
 
   if (!cycle || !state) {
@@ -1679,14 +1630,6 @@ export function App() {
                     {verifyingProof
                       ? 'Checking Fuji...'
                       : proofVerifiedMsg || 'Verify Proof'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleBrowserWalletAnchor}
-                    className="metal-btn px-2.5 py-1 rounded-md text-[11px] text-zinc-100 font-medium"
-                  >
-                    {walletStatusMsg || 'Anchor Wallet'}
                   </button>
                 </div>
               </div>
