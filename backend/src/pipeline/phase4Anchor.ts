@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   createPublicClient,
+  createWalletClient,
   encodeFunctionData,
   formatEther,
   http,
@@ -29,6 +30,12 @@ const CONTRACT_SOL_PATH = path.resolve(
   __dirname,
   '../../../contracts/GridSurgeonRegistry.sol'
 );
+const COMPILED_JSON_PATH = path.resolve(
+  __dirname,
+  '../../../contracts/GridSurgeonRegistry.compiled.json'
+);
+export const PLACEHOLDER_CONTRACT_ADDRESS =
+  '0x742d35Cc6634C0532925a3b844Bc454e4438f44e';
 
 export const GRID_SURGEON_ABI = parseAbi([
   'constructor()',
@@ -59,6 +66,28 @@ export function getCompiledGridSurgeonContract(): {
   let source = '';
   try {
     source = fs.readFileSync(CONTRACT_SOL_PATH, 'utf8');
+  } catch {
+    source = '// GridSurgeonRegistry.sol on Avalanche C-Chain';
+  }
+
+  // Prefer pre-compiled artifact if present for instant startup
+  try {
+    if (fs.existsSync(COMPILED_JSON_PATH)) {
+      const precompiled = JSON.parse(fs.readFileSync(COMPILED_JSON_PATH, 'utf8'));
+      if (precompiled?.abi && precompiled?.bytecode) {
+        cachedCompiledContract = {
+          abi: precompiled.abi,
+          bytecode: precompiled.bytecode,
+          source,
+        };
+        return cachedCompiledContract;
+      }
+    }
+  } catch {
+    // Fall through to dynamic solc compile
+  }
+
+  try {
     const input = {
       language: 'Solidity',
       sources: {
@@ -93,18 +122,59 @@ export function getCompiledGridSurgeonContract(): {
   cachedCompiledContract = {
     abi: GRID_SURGEON_ABI as unknown as unknown[],
     bytecode: '0x6080604052',
-    source: source || '// GridSurgeonRegistry.sol on Avalanche C-Chain',
+    source,
   };
   return cachedCompiledContract;
 }
 
-function getOrCreateOperatorWallet(): {
+export function getOrCreateOperatorWallet(): {
   privateKey: `0x${string}`;
   address: `0x${string}`;
+  deployedContractAddress?: string;
 } {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+
+  const envPk = process.env.OPERATOR_PRIVATE_KEY?.trim();
+  if (envPk) {
+    const normalizedPk = (envPk.startsWith('0x') ? envPk : `0x${envPk}`) as `0x${string}`;
+    try {
+      const account = privateKeyToAccount(normalizedPk);
+      let existingDeployed: string | undefined;
+      if (fs.existsSync(WALLET_FILE)) {
+        try {
+          const prev = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'));
+          existingDeployed = prev?.deployedContractAddress;
+        } catch {
+          // ignore
+        }
+      }
+      fs.writeFileSync(
+        WALLET_FILE,
+        JSON.stringify(
+          {
+            privateKey: normalizedPk,
+            address: account.address,
+            deployedContractAddress: existingDeployed,
+            network: 'Avalanche Fuji / C-Chain (43113 / 43114)',
+            updatedAt: new Date().toISOString(),
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+      return {
+        privateKey: normalizedPk,
+        address: account.address,
+        deployedContractAddress: existingDeployed,
+      };
+    } catch {
+      // Fall through if envPk is invalid
+    }
+  }
+
   if (fs.existsSync(WALLET_FILE)) {
     try {
       const raw = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'));
@@ -113,6 +183,7 @@ function getOrCreateOperatorWallet(): {
         return {
           privateKey: raw.privateKey as `0x${string}`,
           address: account.address,
+          deployedContractAddress: raw.deployedContractAddress,
         };
       }
     } catch {
@@ -139,10 +210,24 @@ function getOrCreateOperatorWallet(): {
   return { privateKey, address: account.address };
 }
 
+function saveDeployedContractToWalletFile(contractAddress: string): void {
+  try {
+    if (fs.existsSync(WALLET_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'));
+      raw.deployedContractAddress = contractAddress;
+      raw.deployedAt = new Date().toISOString();
+      fs.writeFileSync(WALLET_FILE, JSON.stringify(raw, null, 2), 'utf8');
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
 /**
  * BORDER 4: PHASE 4 AVALANCHE C-CHAIN CRYPTOGRAPHIC ANCHOR
  * Computes keccak256 reasoningHash, signs with operator key, encodes ABI calldata for
- * `GridSurgeonRegistry.sol`, and checks live Avalanche Fuji RPC block state.
+ * `GridSurgeonRegistry.sol`, and automatically deploys + broadcasts on Avalanche Fuji
+ * whenever the operator wallet has gas (>0.002 AVAX).
  */
 export async function runPhase4Anchor(
   sense: Phase1SenseOutput,
@@ -153,7 +238,15 @@ export async function runPhase4Anchor(
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
 
-  const { privateKey, address } = getOrCreateOperatorWallet();
+  const { privateKey, address, deployedContractAddress } = getOrCreateOperatorWallet();
+  if (
+    deployedContractAddress &&
+    (!state.contractAddress ||
+      state.contractAddress.toLowerCase() === PLACEHOLDER_CONTRACT_ADDRESS.toLowerCase())
+  ) {
+    state.contractAddress = deployedContractAddress;
+  }
+
   const account = privateKeyToAccount(privateKey);
   const compiled = getCompiledGridSurgeonContract();
 
@@ -217,15 +310,17 @@ export async function runPhase4Anchor(
     });
   }
 
-  // Query live Avalanche Fuji Testnet block height & operator balance (with fast 2500ms timeout)
-  const rpcUrl = 'https://api.avax-test.network/ext/bc/C/rpc';
+  // Query live Avalanche Fuji Testnet block height & operator balance
+  const rpcUrl = process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
   let latestBlockNumber = 39481205;
   let operatorBalanceAvax = '0.0000';
+  let txHash: string | null = null;
+  let anchorStatus: AvalancheAnchorRecord['status'] = 'SIGNED_AND_CALLDATA_READY';
 
   try {
     const publicClient = createPublicClient({
       chain: avalancheFuji,
-      transport: http(rpcUrl, { timeout: 2500 }),
+      transport: http(rpcUrl, { timeout: 6000 }),
     });
     const [blockNum, balanceWei] = await Promise.all([
       publicClient.getBlockNumber(),
@@ -233,8 +328,66 @@ export async function runPhase4Anchor(
     ]);
     latestBlockNumber = Number(blockNum);
     operatorBalanceAvax = Number(formatEther(balanceWei)).toFixed(4);
+
+    // If operator wallet has gas (> 0.002 AVAX), automatically deploy (if needed) and broadcast on-chain!
+    if (balanceWei > 2_000_000_000_000_000n) {
+      const walletClient = createWalletClient({
+        account,
+        chain: avalancheFuji,
+        transport: http(rpcUrl, { timeout: 12000 }),
+      });
+
+      const needsDeploy =
+        !state.contractAddress ||
+        state.contractAddress.toLowerCase() === PLACEHOLDER_CONTRACT_ADDRESS.toLowerCase();
+
+      if (needsDeploy && compiled.bytecode && compiled.bytecode.length > 20) {
+        const deployTxHash = await walletClient.deployContract({
+          abi: compiled.abi as any,
+          bytecode: compiled.bytecode as `0x${string}`,
+          args: [],
+        });
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: deployTxHash,
+          timeout: 25000,
+        });
+        if (receipt.contractAddress) {
+          state.contractAddress = receipt.contractAddress;
+          saveDeployedContractToWalletFile(receipt.contractAddress);
+          console.log(
+            `[Border 4 Auto-Deploy] Deployed GridSurgeonRegistry on Avalanche Fuji at ${receipt.contractAddress} (tx: ${deployTxHash})`
+          );
+        }
+      }
+
+      if (
+        state.contractAddress &&
+        state.contractAddress.toLowerCase() !== PLACEHOLDER_CONTRACT_ADDRESS.toLowerCase()
+      ) {
+        const decisionTx = await walletClient.sendTransaction({
+          to: state.contractAddress as `0x${string}`,
+          data: encodedRecordDecisionCalldata,
+        });
+        txHash = decisionTx;
+        anchorStatus = 'BROADCAST_ON_CHAIN';
+        console.log(
+          `[Border 4 On-Chain Broadcast] Anchored decision on Avalanche Fuji: ${decisionTx}`
+        );
+
+        if (encodedGridSurgeryCalldata) {
+          try {
+            await walletClient.sendTransaction({
+              to: state.contractAddress as `0x${string}`,
+              data: encodedGridSurgeryCalldata,
+            });
+          } catch {
+            // Non-fatal if second tx in same block hits nonce race
+          }
+        }
+      }
+    }
   } catch {
-    // Graceful offline fallback
+    // Graceful offline / RPC fallback
   }
 
   const anchorRecord: AvalancheAnchorRecord = {
@@ -255,8 +408,8 @@ export async function runPhase4Anchor(
     operatorSignature,
     encodedRecordDecisionCalldata,
     encodedGridSurgeryCalldata,
-    txHash: null,
-    status: 'SIGNED_AND_CALLDATA_READY',
+    txHash,
+    status: anchorStatus,
     blockNumber: latestBlockNumber,
   };
 
@@ -275,9 +428,9 @@ export async function runPhase4Anchor(
       startedAt,
       completedAt: new Date(completedAtMs).toISOString(),
       inputContract: 'Phase1SenseOutput + Phase2BrainOutput + Phase3ExecuteOutput',
-      outputContract: 'Phase4AnchorOutput (keccak256 Hash, ECDSA Sig, Encoded ABI Calldata)',
+      outputContract: 'Phase4AnchorOutput (keccak256 Hash, ECDSA Sig, Encoded ABI Calldata, Live Fuji Tx)',
       GuaranteeNote:
-        'Deterministic keccak256 state hashing + ECDSA signing + solc-compiled GridSurgeonRegistry ABI & Bytecode.',
+        'Deterministic keccak256 state hashing + ECDSA signing + auto-deployment & live Fuji transaction broadcast when funded.',
     },
     anchorRecord,
     operatorWallet: {

@@ -187,15 +187,29 @@ export async function runPhase1Sense(
 
   cliRecords.push(sentimentRes.record, smartMoneyRes.record);
 
-  let bullishRatio = liveDerivedBullish;
-  let bearishRatio = liveDerivedBearish;
+  const extractedSentiment = sentimentRes.success
+    ? extractCliSentiment(sentimentRes.data)
+    : null;
+  let bullishRatio = extractedSentiment
+    ? extractedSentiment.bullishRatio
+    : liveDerivedBullish;
+  let bearishRatio = extractedSentiment
+    ? extractedSentiment.bearishRatio
+    : liveDerivedBearish;
   let sentimentSource: DataSourceTag = sentimentRes.success
     ? 'LIVE_OKX_CLI'
     : 'DERIVED_FROM_LIVE_OKX';
   let headlineSummary = `AVAX consolidating at $${lastPx.toFixed(4)} with RSI(14)=${rsi14.toFixed(1)} and 1H OI Δ=${oiDelta1hPct.toFixed(2)}%.`;
 
-  let longNotionalUsd = baseWhaleLongUsd;
-  let shortNotionalUsd = baseWhaleShortUsd;
+  const extractedWhales = smartMoneyRes.success
+    ? extractCliSmartMoney(smartMoneyRes.data)
+    : null;
+  let longNotionalUsd = extractedWhales
+    ? extractedWhales.longNotionalUsd
+    : baseWhaleLongUsd;
+  let shortNotionalUsd = extractedWhales
+    ? extractedWhales.shortNotionalUsd
+    : baseWhaleShortUsd;
   let smartMoneySource: DataSourceTag = smartMoneyRes.success
     ? 'LIVE_OKX_CLI'
     : 'DERIVED_FROM_LIVE_OKX';
@@ -538,4 +552,64 @@ function safeNum(val: unknown, fallback: number): number {
 
 function clamp(val: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, val));
+}
+
+function extractCliSentiment(
+  raw: unknown
+): { bullishRatio: number; bearishRatio: number } | null {
+  try {
+    const items = Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as Record<string, unknown>)?.data)
+      ? ((raw as Record<string, unknown>).data as unknown[])
+      : [];
+    for (const item of items) {
+      if (typeof item === 'object' && item !== null) {
+        const obj = item as Record<string, unknown>;
+        const b = Number(
+          obj.bullishRatio ?? obj.bullishPct ?? obj.bullRatio ?? obj.positiveRatio
+        );
+        if (Number.isFinite(b) && b > 0) {
+          const normalized = b > 1 ? b / 100 : b;
+          const bull = clamp(Number(normalized.toFixed(2)), 0.05, 0.95);
+          return { bullishRatio: bull, bearishRatio: Number((1 - bull).toFixed(2)) };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractCliSmartMoney(
+  raw: unknown
+): { longNotionalUsd: number; shortNotionalUsd: number } | null {
+  try {
+    const items = Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as Record<string, unknown>)?.data)
+      ? ((raw as Record<string, unknown>).data as unknown[])
+      : [];
+    for (const item of items) {
+      if (typeof item === 'object' && item !== null) {
+        const obj = item as Record<string, unknown>;
+        const l = Number(
+          obj.longNotionalUsd ?? obj.longUsd ?? obj.longPosVal ?? obj.buyVolUsd
+        );
+        const s = Number(
+          obj.shortNotionalUsd ?? obj.shortUsd ?? obj.shortPosVal ?? obj.sellVolUsd
+        );
+        if (Number.isFinite(l) && Number.isFinite(s) && (l > 0 || s > 0)) {
+          return {
+            longNotionalUsd: Math.round(l),
+            shortNotionalUsd: Math.round(s),
+          };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

@@ -721,6 +721,7 @@ export async function runPhase3Execute(
   }
 
   const completedAtMs = Date.now();
+  const hasLiveWrite = cliRecords.some((r) => r.mode === 'LIVE_CLI_WRITE');
 
   return {
     meta: {
@@ -736,7 +737,7 @@ export async function runPhase3Execute(
       GuaranteeNote:
         'Executes OKX ATK bot/swap/earn commands with automatic Demo-Safe Execution fallback when API write keys are not logged in.',
     },
-    executionMode: 'DEMO_SAFE_EXECUTION',
+    executionMode: hasLiveWrite ? 'LIVE_AUTHENTICATED' : 'DEMO_SAFE_EXECUTION',
     actionExecuted,
     primaryOkxAlgoOrOrdId,
     activeGridBot: state.activeGridBot,
