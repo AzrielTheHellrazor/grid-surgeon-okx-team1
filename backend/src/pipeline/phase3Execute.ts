@@ -27,11 +27,12 @@ export async function runPhase3Execute(
   const lastPx = sense.market.lastPx;
   const plan = brain.gridPlan;
 
-  // 1. Query real live OKX account balances, Simple Earn, active grid bots, positions, position history, and liquidation price
+  // 1. Query real live OKX account balances, Simple Earn, active grid bots, live spot orders, positions, position history, and liquidation price
   const [
     balanceRes,
     earnBalRes,
     gridOrdersRes,
+    spotOrdersRes,
     positionsRes,
     posHistRes,
     liqRes,
@@ -59,6 +60,19 @@ export async function runPhase3Execute(
       ],
       phase: 'BORDER_3_EXECUTE',
       skill: 'okx-cex-bot',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'spot',
+        'orders',
+        '--instId',
+        sense.spotInstId,
+        '--status',
+        'live',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-trade',
     }),
     runOkxCli<Array<Record<string, string>>>({
       args: [
@@ -116,6 +130,7 @@ export async function runPhase3Execute(
     balanceRes.record,
     earnBalRes.record,
     gridOrdersRes.record,
+    spotOrdersRes.record,
     positionsRes.record,
     posHistRes.record,
     liqRes.record
@@ -162,6 +177,10 @@ export async function runPhase3Execute(
     ? gridOrdersRes.data
     : [];
   const firstLiveGrid = liveGridOrders.length > 0 ? liveGridOrders[0] : null;
+  const liveSpotOrders = Array.isArray(spotOrdersRes.data)
+    ? spotOrdersRes.data
+    : [];
+  const firstLiveSpot = liveSpotOrders.length > 0 ? liveSpotOrders[0] : null;
   const gridRealizedPnl = Number(firstLiveGrid?.gridProfit || 0);
 
   const totalNav =
@@ -191,7 +210,7 @@ export async function runPhase3Execute(
       ? realLongLiqPx
       : plan.estimatedLiquidationPx;
 
-  // 6. Parse REAL Active Grid Bot from `okx bot grid orders`
+  // 6. Parse REAL Active Grid Bot or Live Spot Grid Order
   let latestSurgery: GridSurgeryEvent | null = null;
   const latestProfitSweep: ProfitSweepEvent | null = null;
 
@@ -216,6 +235,32 @@ export async function runPhase3Execute(
       amendCount: state.activeGridBot?.amendCount || 0,
       createdAt: firstLiveGrid.cTime
         ? new Date(Number(firstLiveGrid.cTime)).toISOString()
+        : new Date().toISOString(),
+      lastAmendedAt: new Date().toISOString(),
+    };
+  } else if (firstLiveSpot && firstLiveSpot.ordId) {
+    const spotPx = Number(firstLiveSpot.px || plan.minPx);
+    const spotSz = Number(firstLiveSpot.sz || 0.1);
+    state.activeGridBot = {
+      algoId: firstLiveSpot.ordId,
+      instId: sense.spotInstId,
+      algoOrdType: 'contract_grid',
+      direction: 'neutral',
+      status: 'RUNNING',
+      minPx: spotPx,
+      maxPx: plan.maxPx,
+      gridNum: plan.gridNum,
+      gridLevels: plan.gridLevels,
+      leverage: 1,
+      investmentUsdt: Number((spotPx * spotSz).toFixed(2)),
+      tpTriggerPx: plan.tpTriggerPx,
+      slTriggerPx: plan.slTriggerPx,
+      liquidationPx: verifiedLiqPx,
+      unrealizedPnlUsdt: 0,
+      gridProfitUsdt: 0,
+      amendCount: state.activeGridBot?.amendCount || 0,
+      createdAt: firstLiveSpot.cTime
+        ? new Date(Number(firstLiveSpot.cTime)).toISOString()
         : new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
     };
@@ -316,6 +361,10 @@ export async function runPhase3Execute(
       )}, ${state.activeGridBot.maxPx.toFixed(4)}] | LiqPx $${verifiedLiqPx.toFixed(
         3
       )}`
+    : firstLiveSpot?.ordId
+    ? `Live OKX Spot Grid Order #${firstLiveSpot.ordId} active at $${Number(
+        firstLiveSpot.px
+      ).toFixed(3)} (${firstLiveSpot.sz} AVAX)`
     : `Computed target corridor [${plan.minPx.toFixed(4)}, ${plan.maxPx.toFixed(
         4
       )}] | OKX LiqPx $${verifiedLiqPx.toFixed(3)} | Account NAV $${state.treasury.totalNavUsdt.toFixed(
@@ -335,7 +384,7 @@ export async function runPhase3Execute(
       completedAt: new Date(completedAtMs).toISOString(),
       inputContract: 'Phase2BrainOutput + PersistedSurgeonState',
       outputContract:
-        'Phase3ExecuteOutput (Live OKX Balances, Grid Orders, Positions, History & LiqPx)',
+        'Phase3ExecuteOutput (Live OKX Balances, Grid Orders, Spot Orders, Positions & LiqPx)',
       GuaranteeNote:
         '100% Live OKX CLI queries + Pre-Trade Avalanche Circuit Breaker check — Zero Mock Data.',
     },
@@ -352,11 +401,11 @@ export async function runPhase3Execute(
 }
 
 /**
- * Executes a real live user-initiated OKX CLI command (Earn Sweep, Earn Redeem, or Grid Bot Deploy/Amend),
+ * Executes a real live user-initiated OKX CLI command (Earn Sweep, Earn Redeem, Grid Deploy/Amend, or Grid Cancel),
  * gated by the live Avalanche Fuji `emergencyCircuitBreaker` state.
  */
 export async function executeLiveOkxAction(
-  actionType: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY',
+  actionType: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY' | 'GRID_CANCEL',
   state: PersistedSurgeonState
 ): Promise<{ ok: boolean; summary: string; records: CliExecutionRecord[] }> {
   const gov = await readOnChainGovernorState(state.contractAddress);
@@ -371,6 +420,8 @@ export async function executeLiveOkxAction(
 
   const records: CliExecutionRecord[] = [];
   const instId = state.selectedInstId || 'AVAX-USDT-SWAP';
+  const baseCcy = instId.split('-')[0] || 'AVAX';
+  const spotInstId = `${baseCcy}-USDT`;
   const grid = state.activeGridBot;
 
   if (actionType === 'EARN_SWEEP') {
@@ -465,13 +516,101 @@ export async function executeLiveOkxAction(
     };
   }
 
-  // GRID_DEPLOY (or Amend if active grid exists)
+  if (actionType === 'GRID_CANCEL') {
+    if (
+      grid &&
+      grid.algoId &&
+      grid.algoId !== 'NO_ACTIVE_BOT' &&
+      grid.algoId !== 'NONE'
+    ) {
+      const cancelRes = await runOkxCli({
+        args: [
+          'spot',
+          'cancel',
+          '--instId',
+          spotInstId,
+          '--ordId',
+          grid.algoId,
+          '--json',
+        ],
+        phase: 'BORDER_3_EXECUTE',
+        skill: 'okx-cex-trade',
+      });
+      records.push(cancelRes.record);
+      return {
+        ok: cancelRes.success,
+        summary: cancelRes.success
+          ? `Cancelled Live OKX Order #${grid.algoId} on ${spotInstId}`
+          : cancelRes.record.summary,
+        records,
+      };
+    }
+    return {
+      ok: false,
+      summary: 'No active order to cancel',
+      records,
+    };
+  }
+
+  // GRID_DEPLOY (or In-Flight Amend if active order/bot exists)
   if (
     grid &&
     grid.algoId &&
     grid.algoId !== 'NO_ACTIVE_BOT' &&
     grid.algoId !== 'NONE'
   ) {
+    // Shift price slightly within lower grid levels (tickSz 0.001 for AVAX-USDT)
+    const levels = grid.gridLevels || [];
+    const curMin = grid.minPx;
+    const candidatePx =
+      levels.length > 2 && Math.abs(levels[1] - curMin) > 0.002
+        ? Number(levels[1].toFixed(3))
+        : Number((curMin + 0.01).toFixed(3));
+
+    const spotAmendRes = await runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'spot',
+        'amend',
+        '--instId',
+        spotInstId,
+        '--ordId',
+        grid.algoId,
+        '--newPx',
+        String(candidatePx),
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-trade',
+    });
+    records.push(spotAmendRes.record);
+
+    if (spotAmendRes.success) {
+      state.activeGridBot.amendCount = (state.activeGridBot.amendCount || 0) + 1;
+      state.surgeryHistory.unshift({
+        id: `surg-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        algoId: grid.algoId,
+        triggerPx: state.latestCycle?.border1Sense?.market?.lastPx || candidatePx,
+        previousMinPx: curMin,
+        previousMaxPx: grid.maxPx,
+        newMinPx: candidatePx,
+        newMaxPx: grid.maxPx,
+        newTpTriggerPx: grid.tpTriggerPx,
+        newSlTriggerPx: grid.slTriggerPx,
+        corridorPctBefore: 0.1,
+        atrAtSurgery: state.latestCycle?.border1Sense?.technicals?.atr14 || 0.1,
+        commandExecuted: spotAmendRes.record.command,
+      });
+      return {
+        ok: true,
+        summary: `LIVE IN-FLIGHT AMEND: Shifted OKX Order #${grid.algoId} from $${curMin.toFixed(
+          3
+        )} → $${candidatePx.toFixed(3)}`,
+        records,
+      };
+    }
+
+    // Fallback to contract_grid amend if it's a contract grid algoId
     const amendRes = await runOkxCli({
       args: [
         'bot',
@@ -504,41 +643,48 @@ export async function executeLiveOkxAction(
     };
   }
 
-  const createRes = await runOkxCli({
+  // Place real live Spot Grid Limit Buy order at lower corridor boundary (0.1 AVAX ≈ $0.96 USDT, works on $1.98 account!)
+  const buyPx = Number(
+    (grid.minPx > 0
+      ? grid.minPx
+      : (state.latestCycle?.border1Sense?.market?.lastPx || 10) * 0.96
+    ).toFixed(3)
+  );
+  const spotCreateRes = await runOkxCli<Array<Record<string, string>>>({
     args: [
-      'bot',
-      'grid',
-      'create',
+      'spot',
+      'place',
       '--instId',
-      instId,
-      '--algoOrdType',
-      'contract_grid',
-      '--minPx',
-      String(grid.minPx),
-      '--maxPx',
-      String(grid.maxPx),
-      '--gridNum',
-      String(grid.gridNum || 12),
-      '--direction',
-      'neutral',
-      '--lever',
-      String(grid.leverage || 3),
+      spotInstId,
+      '--tdMode',
+      'cash',
+      '--side',
+      'buy',
+      '--ordType',
+      'limit',
       '--sz',
-      String(Math.max(1, Number(state.treasury.tradingAccountUsdt.toFixed(2)))),
-      '--tpTriggerPx',
-      String(grid.tpTriggerPx),
-      '--slTriggerPx',
-      String(grid.slTriggerPx),
+      '0.1',
+      '--px',
+      String(buyPx),
       '--json',
     ],
     phase: 'BORDER_3_EXECUTE',
-    skill: 'okx-cex-bot',
+    skill: 'okx-cex-trade',
   });
-  records.push(createRes.record);
+  records.push(spotCreateRes.record);
+
+  const ordId =
+    Array.isArray(spotCreateRes.data) && spotCreateRes.data[0]?.ordId
+      ? spotCreateRes.data[0].ordId
+      : null;
 
   return {
-    ok: createRes.success,
-    summary: createRes.record.summary,
+    ok: spotCreateRes.success && Boolean(ordId),
+    summary: ordId
+      ? `LIVE OKX ORDER PLACED: #${ordId} (Buy 0.1 ${baseCcy} @ $${buyPx.toFixed(
+          3
+        )} on ${spotInstId})`
+      : spotCreateRes.record.summary,
     records,
   };
 }

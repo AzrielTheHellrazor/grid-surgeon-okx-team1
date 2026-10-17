@@ -294,7 +294,7 @@ export function App() {
   };
 
   const triggerLiveAction = async (
-    action: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY'
+    action: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY' | 'GRID_CANCEL'
   ) => {
     if (runningAction) return;
     setRunningAction(action);
@@ -717,6 +717,17 @@ export function App() {
                       : 'Deploy Grid'}
                   </span>
                 </button>
+                {gridBot.algoId !== 'NO_ACTIVE_BOT' &&
+                  gridBot.algoId !== 'NONE' && (
+                    <button
+                      type="button"
+                      disabled={runningAction !== null}
+                      onClick={() => triggerLiveAction('GRID_CANCEL')}
+                      className="metal-btn px-2 py-0.5 rounded text-[11px] font-mono text-rose-300 border-rose-500/30 hover:text-rose-200 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  )}
               </div>
             </CardHeader>
 

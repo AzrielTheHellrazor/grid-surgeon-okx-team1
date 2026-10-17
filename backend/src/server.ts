@@ -151,7 +151,12 @@ app.post('/api/instrument', async (req, res) => {
 app.post('/api/action', async (req, res) => {
   try {
     const rawAction = String(req.body?.action || '').toUpperCase();
-    const validActions = ['EARN_SWEEP', 'EARN_REDEEM', 'GRID_DEPLOY'] as const;
+    const validActions = [
+      'EARN_SWEEP',
+      'EARN_REDEEM',
+      'GRID_DEPLOY',
+      'GRID_CANCEL',
+    ] as const;
     if (!validActions.includes(rawAction as any)) {
       res.status(400).json({ ok: false, error: 'Invalid action' });
       return;
