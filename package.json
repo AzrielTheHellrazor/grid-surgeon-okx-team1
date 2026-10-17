@@ -4,8 +4,9 @@
   "private": true,
   "description": "Grid-Surgeon: Autonomous Self-Healing Bot Orchestrator & Whale-Divergence Trap Hunter on AVAX (OKX ATK + Avalanche C-Chain)",
   "scripts": {
-    "start": "bash ./start.sh",
-    "dev": "bash ./start.sh",
+    "start": "npm run start --prefix backend",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm run build --prefix backend && npm run build --prefix frontend",
     "install:all": "npm install --prefix backend && npm install --prefix frontend"
   }

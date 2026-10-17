@@ -3,6 +3,8 @@ backend/node_modules/
 frontend/node_modules/
 backend/dist/
 frontend/dist/
+*.tsbuildinfo
+.agents/
 .data/
 .env
 *.log

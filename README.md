@@ -14,74 +14,46 @@ Instead of acting as a naive LLM that guesses 1-minute candle directions, this a
 
 ---
 
-## 2. Official 100-Point Hackathon Judging Rubric Alignment
+## 2. Live Avalanche & Official Ava Labs ERC-8004 (`8004-boilerplate`) On-Chain Verification (Fuji Testnet `43113`)
 
-| Category & Weight | Sub-Criterion (Points) | How Grid-Surgeon Achieves Full Score |
-| :--- | :--- | :--- |
-| **1. Agentic Design (`20%` — 20 pts)** | **Autonomy (10 pts):** Completes tasks end-to-end without step-by-step prompting | Runs an autonomous 20-second `Sense → Reason → Act → Anchor` daemon loop ([`orchestrator.ts`](./backend/src/pipeline/orchestrator.ts)) that detects grid drift, executes in-flight bot surgery, sweeps profits, and anchors proofs on Avalanche without human intervention. |
-| | **Reasoning & Tool Use (10 pts):** Multi-step planning, picks the right tools/APIs | Dynamically selects across **7 OKX ATK skills** (`market`, `sentiment-tracker`, `smartmoney`, `bot`, `trade`, `portfolio`, `earn`) + **ERC-8004 Validator Agent** based on real-time regime classification (`RANGING_GRID`, `BULL_TRAP_SHORT`, `BEAR_TRAP_LONG`, `BREAKOUT_DCA`, `MACRO_BUNKER`). |
-| **2. Technical Execution (`15%` — 15 pts)** | **Working, Deployed Product (5 pts)** | Live full-stack TypeScript backend (`:4001`), Metallic/Translucent `shadcn` UI (`:5173`), live OKX OAuth (`site: tr`), and **5 live contracts deployed on Avalanche Fuji (`43113`)** with **Minted Agent NFT `#257`**. |
-| | **Architecture Quality (5 pts)** | Strict **Unbreakable 4-Border Architecture** with typed JSON I/O contracts, 8s process timeouts, and zero-exception boundaries. |
-| | **Technical Difficulty (5 pts)** | Combines Wilder `ADX(14)`/`ATR(14)`, Bollinger Bandwidth, Retail-vs-Whale Trap Divergence ($D_{\text{trap}}$), in-flight `okx bot grid amend` surgery, and `keccak256` + EIP-191 ECDSA on-chain verification (verified by **23 test suites + 1,000 Monte Carlo cycles** in [`scripts/verify-quant-math.mjs`](./scripts/verify-quant-math.mjs)). |
-| **3. Avalanche Integration (`10%` — 10 pts)** | **Deployed on C-Chain or Avalanche L1 (5 pts)** | Deployed on **Avalanche Fuji (`43113`)** using the official [`ava-labs/8004-boilerplate`](https://github.com/ava-labs/8004-boilerplate): Shared `IdentityRegistry` ([`0x8004A818...`](https://testnet.snowtrace.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e), **Agent ID `#257`**), Shared `ReputationRegistry` ([`0x8004B663...`](https://testnet.snowtrace.io/address/0x8004B663056A597Dffe9eCcC1965A193B7388713)), `ValidationRegistry` ([`0xffe347...`](https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290)), `TaskAgent` ([`0xc08c72...`](https://testnet.snowtrace.io/address/0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530)), and `GridSurgeonRegistry` ([`0x7c52f6...`](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd)). |
-| | **Uses Avalanche Strengths (5 pts):** Fast finality, custom L1s, interchain messaging | **Sub-Second Snowman Finality (<1s):** Enables pre-trade `emergencyCircuitBreaker` checks and in-flight surgery attestation *before* the next candle tick. **Custom Institutional Risk L1 & ICM (Teleporter) Ready:** `GridSurgeonRegistry.sol` state proofs are structured for cross-L1 broadcast to institutional permissioned Avalanche L1 vaults. |
-| **4. OKX Integration (`10%` — 10 pts)** | **Uses OKX Agent Tooling (5 pts)** | Deep integration of `@okx_ai/okx-trade-cli` (`v1.4.8`) across **11 distinct CLI commands** and **7 OKX ATK modules**. |
-| | **Could Be Listed as a Service on OKX.AI (5 pts)** | Packaged as an installable **OKX.AI Marketplace Skill & Service** in [`skills/grid-surgeon/SKILL.md`](./skills/grid-surgeon/SKILL.md) + [`/.well-known/agent-card.json`](./.well-known/agent-card.json) so any OKX user can subscribe to Grid-Surgeon in 1 click. |
-| **5. Innovation & Real-World Value (`25%` — 25 pts)** | **Originality (10 pts)** | First agent to perform **live in-flight surgery (`okx bot grid amend`)** on server-side exchange grid bots combined with **Retail-vs-Whale Divergence Trap Hunting ($D_{\text{trap}}$)** and **High-Water Mark Simple Earn profit sweeping**. |
-| | **Clear Problem & Target User (5 pts)** | Solves range-breakout liquidation and exit-liquidity bull traps for **1.8M+ OKX retail grid-bot traders** and **delta-neutral USDT vaults**. |
-| | **Market Potential / Business Model (5 pts)** | **0% Management Fee + 10% High-Water Mark Performance Fee** charged *only* on realized profits swept from Trading (`18`) into OKX Simple Earn (`6`), plus B2B licensing via OKX.AI Marketplace. |
-| | **Ready to Go to Market (5 pts)** | Non-custodial OAuth/API-key architecture (funds never leave the user's OKX account), on-chain circuit breaker, and 1-click `./start.sh` deployment. |
-| **6. Demo & Presentation (`20%` — 20 pts)** | **Working Live Demo (5 pts) + UX Design (5 pts) + Pitch & Q&A (10 pts)** | Metallic & Translucent `shadcn` 4-Quadrant Productivity Command Center (`:5173`) with workspace focus tabs, CLI skill filters, 5 one-click stage scenario triggers, and [`STAGE_DEMO_PLAYBOOK.md`](./STAGE_DEMO_PLAYBOOK.md). |
-
----
-
-## 🔺 Live Avalanche & Official Ava Labs ERC-8004 (`8004-boilerplate`) On-Chain Verification (Fuji Testnet `43113`)
-
-Grid-Surgeon integrates the official **[`ava-labs/8004-boilerplate`](https://github.com/ava-labs/8004-boilerplate)** architecture (`IdentityRegistry`, `ReputationRegistry`, `ValidationRegistry`, `TaskAgent`, and `.well-known/agent-card.json`) alongside [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol). Every autonomous cycle is verified by the **`ERC8004TrustValidator`** agent, which hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, and anchors it on **Avalanche Fuji Testnet**:
+Grid-Surgeon integrates the official **[`ava-labs/8004-boilerplate`](https://github.com/ava-labs/8004-boilerplate)** architecture (`IdentityRegistry`, `ReputationRegistry`, `ValidationRegistry`, `TaskAgent`, and `.well-known/agent-card.json`) alongside [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol). Every autonomous cycle hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, and anchors it on **Avalanche Fuji Testnet**:
 
 | On-Chain Contract / Artifact | Address / Transaction Hash / ID | Snowtrace Explorer / Live Endpoint |
 | :--- | :--- | :--- |
 | **Official Ava Labs `IdentityRegistry` (Shared)** | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | [View Official IdentityRegistry ↗](https://testnet.snowtrace.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | **Minted Official ERC-8004 Agent Identity NFT** | **`Agent ID #257`** (`grid-surgeon.okx.avax`) | [View Registration Tx (`0x1b31a4...9804`) ↗](https://testnet.snowtrace.io/tx/0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804) |
 | **Official Ava Labs `ReputationRegistry` (Shared)** | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | [View Official ReputationRegistry ↗](https://testnet.snowtrace.io/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
-| **Deployed `ValidationRegistry.sol` (Per-Agent)** | `0xffe3478342c44f82cb1690638c162716e8648290` | [View ValidationRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290) |
-| **Deployed `TaskAgent.sol` (Per-Agent)** | `0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530` | [View TaskAgent on Snowtrace ↗](https://testnet.snowtrace.io/address/0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530) |
-| **Deployed `GridSurgeonRegistry.sol` (Decision Ledger)** | `0x7c52f6b7b588698700abbac6cbe37f3cfca305cd` | [View GridSurgeonRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd) |
+| **Deployed `ValidationRegistry.sol` (Verified)** | `0xffe3478342c44f82cb1690638c162716e8648290` | [View ValidationRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290) |
+| **Deployed `TaskAgent.sol` (Verified)** | `0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530` | [View TaskAgent on Snowtrace ↗](https://testnet.snowtrace.io/address/0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530) |
+| **Deployed `GridSurgeonRegistry.sol` (Verified)** | `0x7c52f6b7b588698700abbac6cbe37f3cfca305cd` | [View GridSurgeonRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd) |
 | **Genesis Decision + Validation Anchor Tx** | `0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b` | [View Decision Anchor Tx ↗](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b) |
 | **Autonomous Operator Wallet** | `0x07Ee05d717EBC2E47c0A97ad327d56A635920348` | [View Operator Wallet ↗](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348) |
 | **ERC-8004 Discovery Manifest (`agent-card.json`)** | `/.well-known/agent-card.json` | `http://localhost:4001/.well-known/agent-card.json` |
 
 ---
 
-## 🚀 Zero-Touch 1-Click Quick Start (Vibecoder Ready)
+## Quick Start
 
-### Step 1 (Optional): Connect OKX Demo / Simulated Trading Account via OAuth
-Public market, candle, indicator, funding, and open-interest feeds work immediately out-of-the-box via `@okx_ai/okx-trade-cli`. To unlock live account/bot execution in Demo mode:
+### 1. Install & Build
 ```bash
-okx auth login --SimulatedTrading
+npm run install:all
+npm run build
 ```
 
-### Step 2: Start the Full-Stack Command Center
+### 2. Run Backend (`:4001`) & Frontend (`:5173`)
 ```bash
-cd /Users/goktus/Desktop/Grid-Surgeon
-./start.sh
-# Or equivalently:
-npm start
+npm run dev:backend
+npm run dev:frontend
 ```
 
-### Step 3: Run the 4-Border Pipeline & Math Verification Suite
-```bash
-./verify-pipelines.sh
-```
+* **Backend Pipeline API:** `http://localhost:4001` (`/api/status`, `/api/cycle`, `/api/action`, `/api/autopilot`, `/api/verify-hash/:hash`)
+* **Frontend Command Center UI:** `http://localhost:5173`
 
-* **Backend 4-Border Pipeline API:** `http://localhost:4001` (`/api/status`, `/api/cycle`, `/api/scenario`, `/api/autopilot`, `/api/contract`)
-* **Interactive 4-Quadrant Command Center UI:** `http://localhost:5173`
-
-### Unbreakable 4-Border Pipeline Guarantee
-1. **Border 1 (`PHASE 1: SENSE` — `backend/src/pipeline/phase1Sense.ts`)**: Executes real `@okx_ai/okx-trade-cli` (`okx`) commands with strict 8-second timeouts, deterministic 50-candle `ATR_14`, `ADX_14`, `RSI_14`, and `BB(20,2)` calculation, and never-throwing fallback enrichment.
-2. **Border 2 (`PHASE 2: BRAIN` — `backend/src/pipeline/phase2Brain.ts`)**: Pure quantitative engine computing Bollinger Bandwidth ($BBW$), Retail-vs-Whale Trap Divergence Score ($D_{\text{trap}}$), and Grid Corridor Drift Surgery (`<12%` or `>88%` boundary breach $\rightarrow$ recenter via $\pm 2.5 \times \text{ATR}_{14}$).
-3. **Border 3 (`PHASE 3: EXECUTE` — `backend/src/pipeline/phase3Execute.ts`)**: Executes OKX ATK bot/swap/earn commands (`okx bot grid amend`, `okx bot grid liquidate-price`, `okx swap place`, `okx swap algo trail`, `okx account transfer`, `okx earn savings purchase`) with automatic Demo-Safe Execution protection.
-4. **Border 4 (`PHASE 4: AVALANCHE ANCHOR` — `backend/src/pipeline/phase4Anchor.ts`)**: Auto-manages an Avalanche EVM operator wallet, computes the `keccak256` `reasoningHash`, signs it with ECDSA, compiles `contracts/GridSurgeonRegistry.sol` with `solc`, and encodes exact `recordDecision(...)` and `recordGridSurgery(...)` ABI calldata for Avalanche Fuji (`43113`) / C-Chain (`43114`).
+### 4-Phase Pipeline Architecture
+1. **Phase 1 (`SENSE` — `backend/src/pipeline/phase1Sense.ts`)**: Executes `@okx_ai/okx-trade-cli` (`okx`) market, orderbook, indicator, sentiment, and Smart Money commands with deterministic `ATR_14`, `ADX_14`, `RSI_14`, `BB(20,2)`, and Variance Ratio calculations.
+2. **Phase 2 (`BRAIN` — `backend/src/pipeline/phase2Brain.ts`)**: Quantitative engine computing Avellaneda-Stoikov reservation prices, inventory + time-decay 2-tranche exits (`T1` / `T2`), Retail-vs-Whale Trap Divergence Score ($D_{\text{trap}}$), and Grid Corridor Drift Surgery (`<12%` or `>88%` boundary recentering).
+3. **Phase 3 (`EXECUTE` — `backend/src/pipeline/phase3Execute.ts`)**: Executes live OKX Spot / Grid / Simple Earn commands (`okx spot place`, `okx spot amend`, `okx spot fills`, `okx account transfer`, `okx earn savings purchase`) with FIFO queue priority protection and VWAP cost-basis floor guarantees.
+4. **Phase 4 (`ANCHOR` — `backend/src/pipeline/phase4Anchor.ts`)**: Computes `keccak256` `reasoningHash`, verifies EIP-191 ECDSA signatures, broadcasts decision proofs to Avalanche Fuji (`43113`), and triggers the autonomous on-chain drawdown circuit breaker.
 
 ---
 
@@ -247,7 +219,6 @@ okx earn savings balance USDT --json
 ```
 Grid-Surgeon/
 ├── README.md
-├── STAGE_DEMO_PLAYBOOK.md                   # 10-Minute Hackathon Stage Pitch & Demo Guide
 ├── deployment-fuji.json                     # Live Avalanche Fuji (43113) Deployment Manifest
 ├── config/
 │   └── agent.config.js                      # Ava Labs 8004-boilerplate Agent Configuration
