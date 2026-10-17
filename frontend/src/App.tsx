@@ -157,7 +157,7 @@ function GridCandleChart({
     {
       id: 'TP',
       px: tpPx,
-      text: `TP $${tpPx.toFixed(3)}`,
+      text: `GRID MAX $${tpPx.toFixed(3)}`,
       stroke: 'rgba(52,211,153,0.55)',
       fill: 'rgba(6,78,59,0.75)',
       textColor: '#6ee7b7',
@@ -198,7 +198,7 @@ function GridCandleChart({
           {
             id: 'VWAP',
             px: entryFillPx,
-            text: `VWAP $${entryFillPx.toFixed(3)}`,
+            text: `MALIYET $${entryFillPx.toFixed(3)}`,
             stroke: '#fbbf24',
             fill: 'rgba(120,53,15,0.82)',
             textColor: '#fde68a',
@@ -208,7 +208,7 @@ function GridCandleChart({
     {
       id: 'LAST',
       px: lastPx,
-      text: `LAST $${lastPx.toFixed(3)}`,
+      text: `FIYAT $${lastPx.toFixed(3)}`,
       stroke: 'rgba(255,255,255,0.65)',
       fill: 'rgba(39,39,42,0.92)',
       textColor: '#ffffff',
@@ -216,7 +216,7 @@ function GridCandleChart({
     {
       id: 'SL',
       px: slPx,
-      text: `SL $${slPx.toFixed(3)}`,
+      text: `GRID MIN $${slPx.toFixed(3)}`,
       stroke: 'rgba(251,113,133,0.55)',
       fill: 'rgba(136,19,55,0.75)',
       textColor: '#fda4af',
@@ -485,6 +485,7 @@ export function App() {
   const [verifyingProof, setVerifyingProof] = useState<boolean>(false);
   const [proofVerifiedMsg, setProofVerifiedMsg] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState<boolean>(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -911,7 +912,129 @@ export function App() {
       </header>
 
       {/* MAIN WORKSPACE */}
-      <main className="max-w-[1640px] w-full mx-auto px-4 py-4 flex flex-col gap-3.5 flex-1">
+      <main className="max-w-[1640px] w-full mx-auto px-4 py-3.5 flex flex-col gap-3 flex-1">
+        {/* SELF-SPEAKING LIVE AGENT NARRATOR BAR (Speaks to visitors when creator is away) */}
+        <div className="glass-subcard rounded-xl px-3.5 py-2.5 border border-emerald-400/20 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 text-xs leading-relaxed text-zinc-200 min-w-0 flex-1">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-400/35 text-emerald-300 font-mono text-[10px] font-semibold shrink-0">
+                <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
+                CANLI OTONOM ANLATICI
+              </span>
+              <span className="text-zinc-200">
+                {gridBot?.avaxInventory && gridBot.avaxInventory >= 0.05 ? (
+                  <>
+                    <strong className="text-white">Grid-Surgeon</strong> şu an gerçek OKX hesabında (
+                    <strong className="text-emerald-300">
+                      ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
+                    </strong>
+                    ) otonom çalışıyor: Cüzdanda{' '}
+                    <strong className="text-amber-300">
+                      {gridBot.avaxInventory.toFixed(2)} {b1.instId.split('-')[0]}
+                    </strong>{' '}
+                    (ort. alış maliyeti{' '}
+                    <strong className="text-amber-300">
+                      ${(gridBot.entryFillPx || b1.market.lastPx).toFixed(3)}
+                    </strong>
+                    ) tutuyor; piyasa fiyatı{' '}
+                    <strong className="text-white">
+                      ${formatPrice(b1.market.lastPx)}
+                    </strong>{' '}
+                    iken net kârla çıkmak için{' '}
+                    <strong className="text-emerald-300">
+                      T1 ${gridBot.activeOrderPx?.toFixed(3)}
+                    </strong>
+                    {gridBot.tranche2OrderPx ? (
+                      <>
+                        {' '}
+                        ve{' '}
+                        <strong className="text-emerald-300">
+                          T2 ${gridBot.tranche2OrderPx.toFixed(3)}
+                        </strong>
+                      </>
+                    ) : null}{' '}
+                    seviyelerinde satış emri bekliyor ve her kararını{' '}
+                    <strong className="text-amber-300">
+                      Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
+                    </strong>{' '}
+                    zincirine mühürlüyor.
+                  </>
+                ) : (
+                  <>
+                    <strong className="text-white">Grid-Surgeon</strong> şu an gerçek OKX hesabında (
+                    <strong className="text-emerald-300">
+                      ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
+                    </strong>
+                    ) otonom çalışıyor:{' '}
+                    <strong className="text-white">{b1.instId.split('-')[0]}</strong>{' '}
+                    fiyatını (<strong className="text-white">${formatPrice(b1.market.lastPx)}</strong>)
+                    1 dakikalık volatilite koridorunda izliyor, balina/bireysel tuzak skoru{' '}
+                    <strong className="text-emerald-300">
+                      D_trap {b2.formulas.dTrap >= 0 ? '+' : ''}
+                      {b2.formulas.dTrap.toFixed(2)}
+                    </strong>{' '}
+                    ile giriş kolluyor ve her kararını{' '}
+                    <strong className="text-amber-300">
+                      Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
+                    </strong>{' '}
+                    zincirine mühürlüyor.
+                  </>
+                )}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowGuide((v) => !v)}
+              className={cn(
+                'metal-btn px-2.5 py-1 rounded-lg font-mono text-[11px] shrink-0 flex items-center gap-1',
+                showGuide
+                  ? 'border-emerald-400/50 text-emerald-300'
+                  : 'text-zinc-200'
+              )}
+            >
+              <span>{showGuide ? 'Rehberi Kapat ×' : '? Bu Ekran Nedir (4 Adım)'}</span>
+            </button>
+          </div>
+
+          {showGuide && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1.5 border-t border-white/[0.08] text-[11px] text-zinc-300">
+              <div className="glass-well rounded-lg p-2.5">
+                <div className="font-mono font-semibold text-emerald-300 mb-0.5">
+                  1. Canlı Emir & Koridor Cerrahisi
+                </div>
+                <p className="text-zinc-400 leading-snug">
+                  Fiyat koridorun dışına taşarsa botu kapatıp zarar yazmak yerine OKX CLI ile açık emirleri ve koridoru canlı kaydırır. Sarı çizgi alış maliyetini (MALIYET), yeşil çizgiler kâr-al satış emirlerini (T1/T2 SELL) gösterir.
+                </p>
+              </div>
+              <div className="glass-well rounded-lg p-2.5">
+                <div className="font-mono font-semibold text-rose-300 mb-0.5">
+                  2. Balina vs Küçük Yatırımcı Radarı
+                </div>
+                <p className="text-zinc-400 leading-snug">
+                  Küçük yatırımcı coşkusu (Retail) ile balina pozisyonlarını (Smart Money) karşılaştırır. D_trap skoru +1.10 üstüne çıkarsa Boğa Tuzağı (Bull Trap) algılayıp alımları durdurur.
+                </p>
+              </div>
+              <div className="glass-well rounded-lg p-2.5">
+                <div className="font-mono font-semibold text-sky-300 mb-0.5">
+                  3. Gerçek OKX CLI Kanıt Akışı
+                </div>
+                <p className="text-zinc-400 leading-snug">
+                  Simülasyon veya sahte veri yoktur. Ajanın arka planda çalıştırdığı her gerçek <code className="text-zinc-200">okx ... --json</code> terminal komutu ve borsa yanıtı milisaniyesiyle burada listelenir.
+                </p>
+              </div>
+              <div className="glass-well rounded-lg p-2.5">
+                <div className="font-mono font-semibold text-amber-300 mb-0.5">
+                  4. Kâr Kasası & Avalanche Zincir Mührü
+                </div>
+                <p className="text-zinc-400 leading-snug">
+                  Kâr edilen USDT&apos;yi otonom olarak OKX Simple Earn faiz kasasına kilitler; her kararın kriptografik özetini (keccak256) Avalanche Fuji C-Chain üzerindeki doğrulanmış kontratlara yazar.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
         {errorBanner && (
           <div className="glass-subcard rounded-lg px-3 py-1.5 text-amber-300 text-xs font-mono flex items-center justify-between">
             <span>{errorBanner}</span>
@@ -945,22 +1068,20 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Activity className="size-4 text-emerald-400" />
-                Grid Bot Corridor ({b1.instId})
+                1. Canlı Emir Koridoru ({b1.instId})
               </CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="outline">#{gridBot.algoId}</Badge>
+                <Badge variant="outline">#{gridBot.algoId.slice(-6)}</Badge>
                 <Badge variant="emerald">
                   {gridBot.pingPongPhase === 'HARVESTING_EXIT'
-                    ? 'EXIT SELL'
-                    : 'ENTRY BUY'}{' '}
-                  • {gridBot.status}
-                  {gridBot?.tranche2OrderPx
-                    ? ` • T1 $${gridBot.activeOrderPx?.toFixed(3)} / T2 $${gridBot.tranche2OrderPx.toFixed(3)}`
-                    : ''}
+                    ? 'KÂR SATIŞI BEKLİYOR'
+                    : 'ALIŞ FIRSATI BEKLİYOR'}
                 </Badge>
                 <Badge variant="amber">
-                  RT: {gridBot?.roundTripsCompleted ?? 0} • VWAP $
-                  {(gridBot?.entryFillPx || b1.market.lastPx).toFixed(3)}
+                  {(gridBot?.avaxInventory || 0).toFixed(2)}{' '}
+                  {b1.instId.split('-')[0]} @ $
+                  {(gridBot?.entryFillPx || b1.market.lastPx).toFixed(3)} • Tur:{' '}
+                  {gridBot?.roundTripsCompleted ?? 0}
                 </Badge>
                 <button
                   type="button"
@@ -991,33 +1112,48 @@ export function App() {
             </CardHeader>
 
             <CardContent className="p-4 gap-2.5">
-              {/* 5 Compact Indicators */}
+              {/* 5 Compact Indicators (Zero truncation + Turkish explanations on hover) */}
               <div className="grid grid-cols-5 gap-2">
                 {[
-                  { k: 'ATR(14)', v: `$${formatPrice(b1.technicals.atr14)}` },
-                  { k: 'ADX(14)', v: b1.technicals.adx14.toFixed(1) },
-                  { k: 'RSI(14)', v: b1.technicals.rsi14.toFixed(1) },
                   {
-                    k: 'OBI(10)',
+                    k: 'ATR (Oynaklık)',
+                    v: `$${formatPrice(b1.technicals.atr14)}`,
+                    hint: 'Ortalama Gerçek Aralık (14 bar): Mum başına ortalama fiyat oynaklığı',
+                  },
+                  {
+                    k: 'ADX (Trend)',
+                    v: b1.technicals.adx14.toFixed(1),
+                    hint: 'Trend Gücü (<25 yatay koridor piyasası, >25 güçlü kırılım trendi)',
+                  },
+                  {
+                    k: 'RSI (Momentum)',
+                    v: b1.technicals.rsi14.toFixed(1),
+                    hint: 'Göreceli Güç Endeksi (<30 aşırı satım, >70 aşırı alım)',
+                  },
+                  {
+                    k: 'Tahta Dengesi',
                     v: `${(b1.market.orderbookImbalance ?? 0) >= 0 ? '+' : ''}${((b1.market.orderbookImbalance ?? 0) * 100).toFixed(1)}%`,
                     c:
                       (b1.market.orderbookImbalance ?? 0) >= 0
                         ? 'text-emerald-400'
                         : 'text-rose-400',
+                    hint: 'OKX Emir Defteri İlk 10 Kademe Alıcı/Satıcı Baskısı (OBI)',
                   },
                   {
-                    k: gridBot?.tranche2OrderPx ? 'T1 / T2 Px' : 'Order Px',
+                    k: gridBot?.tranche2OrderPx ? 'T1 / T2 Satış' : 'Aktif Emir',
                     v: gridBot?.tranche2OrderPx
-                      ? `T1 $${gridBot.activeOrderPx?.toFixed(3)} / T2 $${gridBot.tranche2OrderPx.toFixed(3)}`
+                      ? `$${gridBot.activeOrderPx?.toFixed(3)}/$${gridBot.tranche2OrderPx.toFixed(3)}`
                       : `$${formatPrice(gridBot.activeOrderPx || b2.gridPlan.optimalBuyPx || gridBot.minPx)}`,
-                    c: 'text-emerald-300',
+                    c: 'text-emerald-300 text-[11px]',
+                    hint: 'OKX üzerinde şu an açık bekleyen gerçek kademeli satış/alış emir fiyatları',
                   },
                 ].map((m) => (
                   <div
                     key={m.k}
-                    className="glass-subcard rounded-lg px-2.5 py-1.5 flex flex-col"
+                    title={m.hint}
+                    className="glass-subcard rounded-lg px-2.5 py-1.5 flex flex-col cursor-help"
                   >
-                    <span className="text-[10px] font-mono text-zinc-500">
+                    <span className="text-[10px] font-mono text-zinc-500 truncate">
                       {m.k}
                     </span>
                     <span
@@ -1054,7 +1190,8 @@ export function App() {
               <div className="glass-subcard rounded-xl p-2.5 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-zinc-400">
-                    Position: <strong className="text-white">{corridorPct}%</strong>
+                    Koridor Konumu:{' '}
+                    <strong className="text-white">{corridorPct}%</strong>
                   </span>
                   <span
                     className={cn(
@@ -1065,8 +1202,8 @@ export function App() {
                     )}
                   >
                     {b2.gridPlan.requiresInFlightSurgery
-                      ? 'AMEND TRIGGERED'
-                      : 'IN RANGE [12%–88%]'}
+                      ? 'OTONOM KORİDOR KAYDIRMA AKTİF (AMEND)'
+                      : 'GÜVENLİ KORİDOR İÇİNDE [12%–88%]'}
                   </span>
                 </div>
 
@@ -1080,17 +1217,17 @@ export function App() {
                 </div>
 
                 <div className="flex justify-between text-[11px] font-mono text-zinc-400">
-                  <span>SL ${formatPrice(gridBot.slTriggerPx)}</span>
+                  <span>Alt Koridor ${formatPrice(gridBot.slTriggerPx)}</span>
                   <span className="text-zinc-200">
                     Min ${formatPrice(gridBot.minPx)}
                   </span>
                   <span className="text-white font-semibold">
-                    ${formatPrice(b1.market.lastPx)}
+                    Anlık ${formatPrice(b1.market.lastPx)}
                   </span>
                   <span className="text-zinc-200">
                     Max ${formatPrice(gridBot.maxPx)}
                   </span>
-                  <span>TP ${formatPrice(gridBot.tpTriggerPx)}</span>
+                  <span>Üst Koridor ${formatPrice(gridBot.tpTriggerPx)}</span>
                 </div>
               </div>
             </CardContent>
@@ -1101,7 +1238,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Crosshair className="size-4 text-rose-400" />
-                Whale vs Retail Divergence
+                2. Balina vs Küçük Yatırımcı Tuzak Radarı
               </CardTitle>
               <Badge
                 variant={
@@ -1112,8 +1249,14 @@ export function App() {
                     : 'metallic'
                 }
               >
-                D_trap: {b2.formulas.dTrap >= 0 ? '+' : ''}
-                {b2.formulas.dTrap.toFixed(2)} ({b2.formulas.trapClassification})
+                Tuzak Skoru: {b2.formulas.dTrap >= 0 ? '+' : ''}
+                {b2.formulas.dTrap.toFixed(2)} (
+                {b2.formulas.trapClassification === 'NO_TRAP'
+                  ? 'DENGELİ / TUZAK YOK'
+                  : b2.formulas.trapClassification === 'BULL_TRAP'
+                  ? 'BOĞA TUZAĞI'
+                  : 'AYI TUZAĞI'}
+                )
               </Badge>
             </CardHeader>
 
@@ -1121,10 +1264,10 @@ export function App() {
               {/* Retail & Whale Bars */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-zinc-400">Retail Sentiment</span>
+                  <div className="flex items-center justify-between gap-2 text-xs font-mono">
+                    <span className="text-zinc-400">Küçük Yatırımcı</span>
                     <span className="text-emerald-300 font-semibold">
-                      {(b1.sentiment.bullishRatio * 100).toFixed(0)}% Bull
+                      %{(b1.sentiment.bullishRatio * 100).toFixed(0)} Yükseliş
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-rose-500/35 overflow-hidden flex">
@@ -1138,14 +1281,14 @@ export function App() {
                   <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                     <span>S_retail: {b1.sentiment.sRetail.toFixed(2)}</span>
                     <span>
-                      {(b1.sentiment.bearishRatio * 100).toFixed(0)}% Bear
+                      %{(b1.sentiment.bearishRatio * 100).toFixed(0)} Düşüş
                     </span>
                   </div>
                 </div>
 
                 <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-zinc-400">Smart Money Whales</span>
+                  <div className="flex items-center justify-between gap-2 text-xs font-mono">
+                    <span className="text-zinc-400">Balinalar (Whale)</span>
                     <span
                       className={cn(
                         'font-semibold',
@@ -1154,7 +1297,7 @@ export function App() {
                           : 'text-rose-300'
                       )}
                     >
-                      {whaleLongPct}% Long
+                      %{whaleLongPct} Long
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-rose-500/40 overflow-hidden flex">
@@ -1165,10 +1308,10 @@ export function App() {
                   </div>
                   <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                     <span>
-                      L ${(b1.smartMoney.longNotionalUsd / 1e6).toFixed(2)}M
+                      Long ${(b1.smartMoney.longNotionalUsd / 1e6).toFixed(2)}M
                     </span>
                     <span>
-                      S ${(b1.smartMoney.shortNotionalUsd / 1e6).toFixed(2)}M
+                      Short ${(b1.smartMoney.shortNotionalUsd / 1e6).toFixed(2)}M
                     </span>
                   </div>
                 </div>
@@ -1177,7 +1320,9 @@ export function App() {
               {/* D_trap Spectrum Gauge */}
               <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">Trap Thresholds</span>
+                  <span className="text-zinc-400">
+                    Tuzak Eşikleri (D_trap = Bireysel − 1.5×Balina)
+                  </span>
                   <span className="text-zinc-200">
                     {b2.formulas.dTrapBps} bps
                   </span>
@@ -1196,17 +1341,26 @@ export function App() {
                   />
                 </div>
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">
-                  <span className="text-emerald-400">&lt; −1.10 Bear Trap</span>
-                  <span>Neutral</span>
-                  <span className="text-rose-400">&gt; +1.10 Bull Trap</span>
+                  <span className="text-emerald-400">
+                    &lt; −1.10 Ayı Tuzağı (Alım Fırsatı)
+                  </span>
+                  <span>Güvenli Koridor</span>
+                  <span className="text-rose-400">
+                    &gt; +1.10 Boğa Tuzağı (Risk!)
+                  </span>
                 </div>
               </div>
 
               {/* Active Execution Status */}
               <div className="glass-well rounded-lg px-3 py-2.5 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400 shrink-0 mr-2">Action:</span>
+                <span className="text-zinc-400 shrink-0 mr-2">Ajan Kararı:</span>
                 <span className="text-zinc-100 truncate">
-                  {b2.recommendedAction} • #{b3.primaryOkxAlgoOrOrdId}
+                  {b2.recommendedAction === 'AMEND_GRID_IN_FLIGHT'
+                    ? 'Koridoru Güncelle & Kâr Emirlerini Koru'
+                    : b2.recommendedAction === 'HOLD_GRID_CORRIDOR'
+                    ? 'Mevcut Kâr-Al Emirlerini Sabit Tut (FIFO Korumalı)'
+                    : b2.recommendedAction}{' '}
+                  • #{b3.primaryOkxAlgoOrOrdId.slice(-8)}
                 </span>
               </div>
             </CardContent>
@@ -1217,7 +1371,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Terminal className="size-4 text-zinc-200" />
-                OKX CLI Stream
+                3. Canlı OKX CLI Komut & Kanıt Akışı
               </CardTitle>
               <div className="flex items-center gap-1">
                 {[
@@ -1308,7 +1462,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Anchor className="size-4 text-amber-300" />
-                Treasury & Avalanche Chain
+                4. Kâr Kasası (Earn) & Avalanche Zincir Mührü
               </CardTitle>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1346,33 +1500,45 @@ export function App() {
             <CardContent className="p-4 gap-3">
               {/* 4 Portfolio Balances + Live Earn Actions */}
               <div className="grid grid-cols-4 gap-2">
-                <div className="glass-subcard rounded-lg p-2.5 flex flex-col">
+                <div
+                  title="OKX Hesabındaki Toplam Net Varlık (AVAX + USDT + Simple Earn)"
+                  className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
+                >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    TOTAL NAV
+                    TOPLAM VARLIK
                   </span>
                   <span className="text-sm font-mono font-bold text-white mt-0.5">
                     ${b3.treasury.totalNavUsdt.toFixed(2)}
                   </span>
                 </div>
-                <div className="glass-subcard rounded-lg p-2.5 flex flex-col">
+                <div
+                  title="OKX Spot Al-Sat Hesabındaki Aktif Bakiye (AVAX + USDT)"
+                  className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
+                >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    TRADING (18)
+                    OKX SPOT KASA
                   </span>
                   <span className="text-sm font-mono font-bold text-zinc-100 mt-0.5">
                     ${b3.treasury.tradingAccountUsdt.toFixed(2)}
                   </span>
                 </div>
-                <div className="glass-subcard rounded-lg p-2.5 flex flex-col border-emerald-400/25">
+                <div
+                  title="OKX Simple Earn Faiz Kasasında Kilitli Kâr Bakiyesi"
+                  className="glass-subcard rounded-lg p-2.5 flex flex-col border-emerald-400/25 cursor-help"
+                >
                   <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                    <Lock className="size-2.5" /> EARN (6)
+                    <Lock className="size-2.5" /> OKX FAİZ (EARN)
                   </span>
                   <span className="text-sm font-mono font-bold text-emerald-300 mt-0.5">
                     ${b3.treasury.lockedSimpleEarnUsdt.toFixed(2)}
                   </span>
                 </div>
-                <div className="glass-subcard rounded-lg p-2.5 flex flex-col">
+                <div
+                  title="Tamamlanan Al-Sat Turlarından Elde Edilen Net Gerçekleşmiş Kâr"
+                  className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
+                >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    NET PnL (LIVE)
+                    GERÇEKLEŞEN KÂR
                   </span>
                   <span
                     className={cn(
