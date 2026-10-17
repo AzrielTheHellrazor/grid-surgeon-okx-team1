@@ -76,6 +76,8 @@ export interface Phase1SenseOutput {
     lastPx: number;
     askPx: number;
     bidPx: number;
+    microPx?: number;
+    orderbookImbalance?: number;
     high24h: number;
     low24h: number;
     vol24h: number;
@@ -95,6 +97,7 @@ export interface Phase1SenseOutput {
     bbWidthPct: number;
     atr14: number;
     adx14: number;
+    varianceRatio?: number;
     supertrendDirection: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
     source: DataSourceTag;
   };
@@ -142,6 +145,10 @@ export interface GridCorridorPlan {
   corridorPositionPct: number;
   requiresInFlightSurgery: boolean;
   surgeryReason: string;
+  reservationPx?: number;
+  optimalBuyPx?: number;
+  optimalSellPx?: number;
+  alphaFlow?: number;
 }
 
 export interface Phase2BrainOutput {
@@ -162,6 +169,13 @@ export interface Phase2BrainOutput {
     dTrap: number;
     dTrapBps: number;
     trapClassification: 'BULL_TRAP' | 'BEAR_TRAP' | 'NO_TRAP';
+    obi?: number;
+    microPx?: number;
+    varianceRatio?: number;
+    alphaFlow?: number;
+    reservationPx?: number;
+    optimalBuyPx?: number;
+    optimalSellPx?: number;
   };
   gridPlan: GridCorridorPlan;
   recommendedAction:
@@ -202,6 +216,11 @@ export interface ActiveGridBotState {
   amendCount: number;
   createdAt: string;
   lastAmendedAt: string;
+  pingPongPhase?: 'SEEKING_ENTRY' | 'HARVESTING_EXIT' | 'IDLE';
+  activeOrderPx?: number;
+  entryFillPx?: number;
+  avaxInventory?: number;
+  roundTripsCompleted?: number;
 }
 
 export interface GridSurgeryEvent {

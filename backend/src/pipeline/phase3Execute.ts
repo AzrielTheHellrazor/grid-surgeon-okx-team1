@@ -143,6 +143,19 @@ export async function runPhase3Execute(
   const valuationObj = balData?.valuation as Record<string, unknown> | undefined;
 
   const realTradingEq = Number(tradingObj?.totalEq || 0);
+  const baseCcy = sense.instId.split('-')[0] || 'AVAX';
+  let avaxInventory = 0;
+  let usdtEquity = 0;
+  if (Array.isArray(tradingObj?.details)) {
+    for (const d of tradingObj.details as Array<Record<string, string>>) {
+      if (d.ccy === baseCcy) {
+        avaxInventory += Number(d.availEq || d.eq || d.availBal || 0);
+      } else if (d.ccy === 'USDT') {
+        usdtEquity += Number(d.eq || 0);
+      }
+    }
+  }
+
   let realFundingEq = 0;
   if (Array.isArray(fundingObj?.details)) {
     for (const d of fundingObj.details as Array<Record<string, string>>) {
@@ -180,7 +193,7 @@ export async function runPhase3Execute(
   const liveSpotOrders = Array.isArray(spotOrdersRes.data)
     ? spotOrdersRes.data
     : [];
-  const firstLiveSpot = liveSpotOrders.length > 0 ? liveSpotOrders[0] : null;
+  let firstLiveSpot = liveSpotOrders.length > 0 ? liveSpotOrders[0] : null;
   const gridRealizedPnl = Number(firstLiveGrid?.gridProfit || 0);
 
   const totalNav =
@@ -210,7 +223,112 @@ export async function runPhase3Execute(
       ? realLongLiqPx
       : plan.estimatedLiquidationPx;
 
-  // 6. Parse REAL Active Grid Bot or Live Spot Grid Order
+  // Pre-Trade On-Chain Governor Check on Avalanche Fuji (`emergencyCircuitBreaker`)
+  const onChainGov = await readOnChainGovernorState(state.contractAddress);
+
+  const optimalBuyPx =
+    brain.formulas.optimalBuyPx || Number(plan.minPx.toFixed(3));
+  const optimalSellPx =
+    brain.formulas.optimalSellPx || Number(plan.maxPx.toFixed(3));
+
+  const spotSizing =
+    sense.spotInstId === 'BTC-USDT'
+      ? { minSellSz: 0.00001, buySz: '0.000011', sellSz: '0.00001', pxDec: 1 }
+      : sense.spotInstId === 'ETH-USDT'
+      ? { minSellSz: 0.0001, buySz: '0.00025', sellSz: '0.00024', pxDec: 2 }
+      : sense.spotInstId === 'SOL-USDT'
+      ? { minSellSz: 0.01, buySz: '0.0101', sellSz: '0.01', pxDec: 2 }
+      : { minSellSz: 0.1, buySz: '0.1002', sellSz: '0.1', pxDec: 3 };
+
+  // 6. Autonomous Two-Leg Ping-Pong Maker State Machine (When no order is currently open)
+  if (
+    !onChainGov.circuitBreakerActive &&
+    !firstLiveGrid &&
+    !firstLiveSpot
+  ) {
+    if (avaxInventory >= spotSizing.minSellSz) {
+      // Leg B: Buy filled! Place Net-EV Fee-Protected Take-Profit Limit SELL
+      const sellPxStr = optimalSellPx.toFixed(spotSizing.pxDec);
+      const sellCreateRes = await runOkxCli<Array<Record<string, string>>>({
+        args: [
+          'spot',
+          'place',
+          '--instId',
+          sense.spotInstId,
+          '--tdMode',
+          'cash',
+          '--side',
+          'sell',
+          '--ordType',
+          'limit',
+          '--sz',
+          spotSizing.sellSz,
+          '--px',
+          sellPxStr,
+          '--json',
+        ],
+        phase: 'BORDER_3_EXECUTE',
+        skill: 'okx-cex-trade',
+      });
+      cliRecords.push(sellCreateRes.record);
+      const newOrdId =
+        Array.isArray(sellCreateRes.data) && sellCreateRes.data[0]?.ordId
+          ? sellCreateRes.data[0].ordId
+          : null;
+      if (newOrdId) {
+        firstLiveSpot = {
+          ordId: newOrdId,
+          px: sellPxStr,
+          sz: spotSizing.sellSz,
+          side: 'sell',
+          cTime: String(Date.now()),
+        };
+      }
+    } else if (
+      state.autoPilotEnabled &&
+      usdtEquity >= Number(spotSizing.buySz) * optimalBuyPx * 1.002
+    ) {
+      // Leg A: Seek entry on Optimal Inner Rung below Stoikov Micro-Price
+      const buyPxStr = optimalBuyPx.toFixed(spotSizing.pxDec);
+      const buyCreateRes = await runOkxCli<Array<Record<string, string>>>({
+        args: [
+          'spot',
+          'place',
+          '--instId',
+          sense.spotInstId,
+          '--tdMode',
+          'cash',
+          '--side',
+          'buy',
+          '--ordType',
+          'limit',
+          '--sz',
+          spotSizing.buySz,
+          '--px',
+          buyPxStr,
+          '--json',
+        ],
+        phase: 'BORDER_3_EXECUTE',
+        skill: 'okx-cex-trade',
+      });
+      cliRecords.push(buyCreateRes.record);
+      const newOrdId =
+        Array.isArray(buyCreateRes.data) && buyCreateRes.data[0]?.ordId
+          ? buyCreateRes.data[0].ordId
+          : null;
+      if (newOrdId) {
+        firstLiveSpot = {
+          ordId: newOrdId,
+          px: buyPxStr,
+          sz: spotSizing.buySz,
+          side: 'buy',
+          cTime: String(Date.now()),
+        };
+      }
+    }
+  }
+
+  // 7. Parse REAL Active Grid Bot or Live Spot Grid Order
   let latestSurgery: GridSurgeryEvent | null = null;
   const latestProfitSweep: ProfitSweepEvent | null = null;
   const prevMinPx = state.activeGridBot?.minPx || plan.minPx;
@@ -239,22 +357,21 @@ export async function runPhase3Execute(
         ? new Date(Number(firstLiveGrid.cTime)).toISOString()
         : new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
+      pingPongPhase: 'SEEKING_ENTRY',
+      avaxInventory,
     };
   } else if (firstLiveSpot && firstLiveSpot.ordId) {
-    const spotPx = Number(firstLiveSpot.px || plan.minPx);
+    const spotPx = Number(firstLiveSpot.px || optimalBuyPx);
     const spotSz = Number(firstLiveSpot.sz || 0.1);
-    const preservedMaxPx =
-      prevMaxPx > spotPx
-        ? prevMaxPx
-        : Number((spotPx + 5 * brain.formulas.atr14).toFixed(4));
+    const spotSide = (firstLiveSpot.side || 'buy').toLowerCase();
     state.activeGridBot = {
       algoId: firstLiveSpot.ordId,
       instId: sense.instId,
       algoOrdType: 'contract_grid',
       direction: 'neutral',
       status: 'RUNNING',
-      minPx: spotPx,
-      maxPx: preservedMaxPx,
+      minPx: plan.minPx,
+      maxPx: plan.maxPx,
       gridNum: plan.gridNum,
       gridLevels: plan.gridLevels,
       leverage: 1,
@@ -269,6 +386,15 @@ export async function runPhase3Execute(
         ? new Date(Number(firstLiveSpot.cTime)).toISOString()
         : new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
+      pingPongPhase:
+        spotSide === 'sell' ? 'HARVESTING_EXIT' : 'SEEKING_ENTRY',
+      activeOrderPx: spotPx,
+      entryFillPx:
+        spotSide === 'buy'
+          ? spotPx
+          : state.activeGridBot?.entryFillPx || spotPx,
+      avaxInventory,
+      roundTripsCompleted: state.activeGridBot?.roundTripsCompleted || 0,
     };
   } else {
     state.activeGridBot = {
@@ -291,15 +417,34 @@ export async function runPhase3Execute(
       amendCount: state.activeGridBot?.amendCount || 0,
       createdAt: state.activeGridBot?.createdAt || new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
+      pingPongPhase: avaxInventory >= 0.095 ? 'HARVESTING_EXIT' : 'IDLE',
+      avaxInventory,
+      roundTripsCompleted: state.activeGridBot?.roundTripsCompleted || 0,
     };
   }
 
-  // Pre-Trade On-Chain Governor Check on Avalanche Fuji (`emergencyCircuitBreaker`)
-  const onChainGov = await readOnChainGovernorState(state.contractAddress);
+  // 8. In-Flight Order Surgery (Trailing Inner-Rung Amend or Corridor Recentering)
+  if (!onChainGov.circuitBreakerActive) {
+    const spotSide = (firstLiveSpot?.side || 'buy').toLowerCase();
+    const currentSpotPx = Number(firstLiveSpot?.px || 0);
+    const spotSz = Number(firstLiveSpot?.sz || spotSizing.buySz);
+    const rawTargetMakerPx = spotSide === 'sell' ? optimalSellPx : optimalBuyPx;
+    const decMult = Math.pow(10, spotSizing.pxDec);
+    const maxAffordableBuyPx =
+      spotSide === 'buy' && spotSz > 0 && usdtEquity > 0
+        ? Math.floor((usdtEquity / spotSz) * decMult) / decMult
+        : rawTargetMakerPx;
+    const targetMakerPx =
+      spotSide === 'buy'
+        ? Math.min(rawTargetMakerPx, maxAffordableBuyPx)
+        : rawTargetMakerPx;
+    const needsInnerRungTrail =
+      Boolean(firstLiveSpot?.ordId) &&
+      currentSpotPx > 0 &&
+      targetMakerPx > 0 &&
+      Math.abs(currentSpotPx - targetMakerPx) >= 0.004;
 
-  // If a real grid bot or spot grid order is running on OKX and requires in-flight surgery, execute real amend (only if On-Chain Circuit Breaker is OFF)
-  if (!onChainGov.circuitBreakerActive && plan.requiresInFlightSurgery) {
-    if (firstLiveGrid?.algoId) {
+    if (firstLiveGrid?.algoId && plan.requiresInFlightSurgery) {
       const amendArgs = [
         'bot',
         'grid',
@@ -349,8 +494,13 @@ export async function runPhase3Execute(
         };
         state.surgeryHistory.unshift(latestSurgery);
       }
-    } else if (firstLiveSpot?.ordId) {
-      const newSpotPx = Number(plan.minPx.toFixed(3));
+    } else if (
+      firstLiveSpot?.ordId &&
+      targetMakerPx > 0 &&
+      Math.abs(currentSpotPx - targetMakerPx) >= 0.001 &&
+      (plan.requiresInFlightSurgery || needsInnerRungTrail)
+    ) {
+      const newSpotPx = Number(targetMakerPx.toFixed(spotSizing.pxDec));
       const spotAmendArgs = [
         'spot',
         'amend',
@@ -370,7 +520,11 @@ export async function runPhase3Execute(
       cliRecords.push(spotAmendRes.record);
 
       if (spotAmendRes.success) {
-        state.activeGridBot.minPx = newSpotPx;
+        state.activeGridBot.activeOrderPx = newSpotPx;
+        if (spotSide === 'buy') {
+          state.activeGridBot.entryFillPx = newSpotPx;
+        }
+        state.activeGridBot.minPx = plan.minPx;
         state.activeGridBot.maxPx = plan.maxPx;
         state.activeGridBot.status = 'AMENDED';
         state.activeGridBot.amendCount += 1;
@@ -379,7 +533,7 @@ export async function runPhase3Execute(
           timestamp: new Date().toISOString(),
           algoId: firstLiveSpot.ordId,
           triggerPx: lastPx,
-          previousMinPx: prevMinPx,
+          previousMinPx: currentSpotPx,
           previousMaxPx: prevMaxPx,
           newMinPx: newSpotPx,
           newMaxPx: plan.maxPx,
@@ -392,6 +546,7 @@ export async function runPhase3Execute(
         state.surgeryHistory.unshift(latestSurgery);
       }
     } else if (
+      plan.requiresInFlightSurgery &&
       prevMinPx > 0 &&
       (Math.abs(prevMinPx - plan.minPx) > 0.0001 ||
         Math.abs(prevMaxPx - plan.maxPx) > 0.0001)
@@ -430,13 +585,15 @@ export async function runPhase3Execute(
         3
       )}`
     : firstLiveSpot?.ordId
-    ? `Live OKX Spot Grid Order #${firstLiveSpot.ordId} active at $${Number(
-        firstLiveSpot.px
-      ).toFixed(3)} (${firstLiveSpot.sz} AVAX)`
+    ? `Live OKX Spot ${(firstLiveSpot.side || 'BUY').toUpperCase()} #${
+        firstLiveSpot.ordId
+      } @ $${(state.activeGridBot.activeOrderPx || Number(firstLiveSpot.px)).toFixed(
+        3
+      )} (0.1 AVAX • ${state.activeGridBot.pingPongPhase})`
     : `Computed target corridor [${plan.minPx.toFixed(4)}, ${plan.maxPx.toFixed(
         4
-      )}] | OKX LiqPx $${verifiedLiqPx.toFixed(3)} | Account NAV $${state.treasury.totalNavUsdt.toFixed(
-        2
+      )}] | Optimal Buy $${optimalBuyPx.toFixed(3)} / Sell $${optimalSellPx.toFixed(
+        3
       )}`;
 
   const completedAtMs = Date.now();
@@ -585,6 +742,7 @@ export async function executeLiveOkxAction(
   }
 
   if (actionType === 'GRID_CANCEL') {
+    state.autoPilotEnabled = false;
     if (
       grid &&
       grid.algoId &&
@@ -608,7 +766,7 @@ export async function executeLiveOkxAction(
       return {
         ok: cancelRes.success,
         summary: cancelRes.success
-          ? `Cancelled Live OKX Order #${grid.algoId} on ${spotInstId}`
+          ? `Cancelled Live OKX Order #${grid.algoId} on ${spotInstId} (Auto-Pilot Paused)`
           : cancelRes.record.summary,
         records,
       };
@@ -620,6 +778,16 @@ export async function executeLiveOkxAction(
     };
   }
 
+  const stoikovBuyPx =
+    state.latestCycle?.border2Brain?.formulas?.optimalBuyPx ||
+    Number(
+      (
+        (state.latestCycle?.border1Sense?.market?.bidPx ||
+          state.latestCycle?.border1Sense?.market?.lastPx ||
+          10) - 0.002
+      ).toFixed(3)
+    );
+
   // GRID_DEPLOY (or In-Flight Amend if active order/bot exists)
   if (
     grid &&
@@ -627,13 +795,11 @@ export async function executeLiveOkxAction(
     grid.algoId !== 'NO_ACTIVE_BOT' &&
     grid.algoId !== 'NONE'
   ) {
-    // Shift price slightly within lower grid levels (tickSz 0.001 for AVAX-USDT)
-    const levels = grid.gridLevels || [];
-    const curMin = grid.minPx;
+    const curOrderPx = grid.activeOrderPx || grid.minPx;
     const candidatePx =
-      levels.length > 2 && Math.abs(levels[1] - curMin) > 0.002
-        ? Number(levels[1].toFixed(3))
-        : Number((curMin + 0.01).toFixed(3));
+      Math.abs(stoikovBuyPx - curOrderPx) >= 0.001
+        ? Number(stoikovBuyPx.toFixed(3))
+        : Number((stoikovBuyPx - 0.001).toFixed(3));
 
     const spotAmendRes = await runOkxCli<Array<Record<string, string>>>({
       args: [
@@ -653,13 +819,14 @@ export async function executeLiveOkxAction(
     records.push(spotAmendRes.record);
 
     if (spotAmendRes.success) {
+      state.activeGridBot.activeOrderPx = candidatePx;
       state.activeGridBot.amendCount = (state.activeGridBot.amendCount || 0) + 1;
       state.surgeryHistory.unshift({
         id: `surg-${Date.now()}`,
         timestamp: new Date().toISOString(),
         algoId: grid.algoId,
         triggerPx: state.latestCycle?.border1Sense?.market?.lastPx || candidatePx,
-        previousMinPx: curMin,
+        previousMinPx: curOrderPx,
         previousMaxPx: grid.maxPx,
         newMinPx: candidatePx,
         newMaxPx: grid.maxPx,
@@ -671,9 +838,9 @@ export async function executeLiveOkxAction(
       });
       return {
         ok: true,
-        summary: `LIVE IN-FLIGHT AMEND: Shifted OKX Order #${grid.algoId} from $${curMin.toFixed(
+        summary: `LIVE IN-FLIGHT AMEND: Shifted OKX Order #${grid.algoId} from $${curOrderPx.toFixed(
           3
-        )} → $${candidatePx.toFixed(3)}`,
+        )} → $${candidatePx.toFixed(3)} (Stoikov Inner Rung)`,
         records,
       };
     }
@@ -711,13 +878,16 @@ export async function executeLiveOkxAction(
     };
   }
 
-  // Place real live Spot Grid Limit Buy order at lower corridor boundary (0.1 AVAX ≈ $0.96 USDT, works on $1.98 account!)
-  const buyPx = Number(
-    (grid.minPx > 0
-      ? grid.minPx
-      : (state.latestCycle?.border1Sense?.market?.lastPx || 10) * 0.96
-    ).toFixed(3)
-  );
+  // Place real live Spot Grid Limit Buy order at Stoikov Optimal Inner Rung
+  const manualSizing =
+    spotInstId === 'BTC-USDT'
+      ? { buySz: '0.000011', pxDec: 1 }
+      : spotInstId === 'ETH-USDT'
+      ? { buySz: '0.00025', pxDec: 2 }
+      : spotInstId === 'SOL-USDT'
+      ? { buySz: '0.0101', pxDec: 2 }
+      : { buySz: '0.1002', pxDec: 3 };
+  const buyPx = Number(stoikovBuyPx.toFixed(manualSizing.pxDec));
   const spotCreateRes = await runOkxCli<Array<Record<string, string>>>({
     args: [
       'spot',
@@ -731,7 +901,7 @@ export async function executeLiveOkxAction(
       '--ordType',
       'limit',
       '--sz',
-      '0.1',
+      manualSizing.buySz,
       '--px',
       String(buyPx),
       '--json',
@@ -749,8 +919,8 @@ export async function executeLiveOkxAction(
   return {
     ok: spotCreateRes.success && Boolean(ordId),
     summary: ordId
-      ? `LIVE OKX ORDER PLACED: #${ordId} (Buy 0.1 ${baseCcy} @ $${buyPx.toFixed(
-          3
+      ? `LIVE OKX ORDER PLACED: #${ordId} (Buy ${manualSizing.buySz} ${baseCcy} @ $${buyPx.toFixed(
+          manualSizing.pxDec
         )} on ${spotInstId})`
       : spotCreateRes.record.summary,
     records,

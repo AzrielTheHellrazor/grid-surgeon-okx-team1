@@ -761,7 +761,10 @@ export function App() {
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline">#{gridBot.algoId}</Badge>
                 <Badge variant="emerald">
-                  {gridBot.status} • {gridBot.leverage}x
+                  {gridBot.pingPongPhase === 'HARVESTING_EXIT'
+                    ? 'EXIT SELL'
+                    : 'ENTRY BUY'}{' '}
+                  • {gridBot.status}
                 </Badge>
                 <button
                   type="button"
@@ -799,13 +802,17 @@ export function App() {
                   { k: 'ADX(14)', v: b1.technicals.adx14.toFixed(1) },
                   { k: 'RSI(14)', v: b1.technicals.rsi14.toFixed(1) },
                   {
-                    k: 'BB Width',
-                    v: `${b1.technicals.bbWidthPct.toFixed(2)}%`,
+                    k: 'OBI(10)',
+                    v: `${(b1.market.orderbookImbalance ?? 0) >= 0 ? '+' : ''}${((b1.market.orderbookImbalance ?? 0) * 100).toFixed(1)}%`,
+                    c:
+                      (b1.market.orderbookImbalance ?? 0) >= 0
+                        ? 'text-emerald-400'
+                        : 'text-rose-400',
                   },
                   {
-                    k: 'Liq Px',
-                    v: `$${formatPrice(gridBot.liquidationPx)}`,
-                    c: 'text-rose-400',
+                    k: 'Order Px',
+                    v: `$${formatPrice(gridBot.activeOrderPx || b2.gridPlan.optimalBuyPx || gridBot.minPx)}`,
+                    c: 'text-emerald-300',
                   },
                 ].map((m) => (
                   <div

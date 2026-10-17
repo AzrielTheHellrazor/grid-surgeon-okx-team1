@@ -30,9 +30,10 @@ export async function runPhase1Sense(
   const startedAt = new Date(startedAtMs).toISOString();
   const cliRecords: CliExecutionRecord[] = [];
 
-  // 1. Execute public OKX CLI market & technical commands concurrently
+  // 1. Execute public OKX CLI market, L2 orderbook & technical commands concurrently
   const [
     tickerRes,
+    orderbookRes,
     candlesRes,
     rsiRes,
     bbRes,
@@ -42,6 +43,16 @@ export async function runPhase1Sense(
   ] = await Promise.all([
     runOkxCli<Array<Record<string, string>>>({
       args: ['market', 'ticker', activeInstId, '--json'],
+      phase: 'BORDER_1_SENSE',
+      skill: 'okx-cex-market',
+    }),
+    runOkxCli<
+      Array<{
+        asks?: Array<string[]>;
+        bids?: Array<string[]>;
+      }>
+    >({
+      args: ['market', 'orderbook', spotInstId, '--sz', '10', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
@@ -79,6 +90,7 @@ export async function runPhase1Sense(
 
   cliRecords.push(
     tickerRes.record,
+    orderbookRes.record,
     candlesRes.record,
     rsiRes.record,
     bbRes.record,
@@ -103,6 +115,44 @@ export async function runPhase1Sense(
   const change24hPct =
     open24h > 0 ? Number((((lastPx - open24h) / open24h) * 100).toFixed(2)) : 0;
 
+  // Parse L2 Orderbook -> Compute Depth-Weighted OBI_10 & Stoikov Micro-Price
+  const rawBook =
+    Array.isArray(orderbookRes.data) && orderbookRes.data[0]
+      ? orderbookRes.data[0]
+      : null;
+  const bids = Array.isArray(rawBook?.bids) ? rawBook.bids : [];
+  const asks = Array.isArray(rawBook?.asks) ? rawBook.asks : [];
+  const bestBidPx = safeNum(bids[0]?.[0], bidPx);
+  const bestBidSz = safeNum(bids[0]?.[1], 10);
+  const bestAskPx = safeNum(asks[0]?.[0], askPx);
+  const bestAskSz = safeNum(asks[0]?.[1], 10);
+  const microPx = Number(
+    (
+      (bestBidSz * bestAskPx + bestAskSz * bestBidPx) /
+      Math.max(0.0001, bestBidSz + bestAskSz)
+    ).toFixed(4)
+  );
+
+  let weightedBidVol = 0;
+  let weightedAskVol = 0;
+  const maxDepth = Math.max(bids.length, asks.length, 1);
+  for (let k = 0; k < Math.min(10, maxDepth); k++) {
+    const w = Math.exp(-0.25 * k);
+    weightedBidVol += w * safeNum(bids[k]?.[1], 0);
+    weightedAskVol += w * safeNum(asks[k]?.[1], 0);
+  }
+  const totalWeightedVol = weightedBidVol + weightedAskVol;
+  const orderbookImbalance =
+    totalWeightedVol > 0
+      ? Number(
+          clamp(
+            (weightedBidVol - weightedAskVol) / totalWeightedVol,
+            -1,
+            1
+          ).toFixed(4)
+        )
+      : 0;
+
   // Parse Funding Rate
   const rawFunding =
     Array.isArray(fundingRes.data) && fundingRes.data[0] ? fundingRes.data[0] : null;
@@ -122,6 +172,7 @@ export async function runPhase1Sense(
 
   // Compute deterministic ATR_14, ADX_14, RSI_14, BB(20,2) from the 50 real candles
   const computedTech = computeTechnicalsFromCandles(candles, lastPx, activeBar);
+  const varianceRatio = computeVarianceRatio(candles);
 
   // Extract CLI RSI & BB if returned by OKX CLI (for 1m, use direct 1m candle computation)
   const cliRsi = activeBar === '1m' ? null : extractCliRsi(rsiRes.data, indicatorBar);
@@ -284,8 +335,10 @@ export async function runPhase1Sense(
     bar: activeBar,
     market: {
       lastPx,
-      askPx,
-      bidPx,
+      askPx: bestAskPx,
+      bidPx: bestBidPx,
+      microPx,
+      orderbookImbalance,
       high24h,
       low24h,
       vol24h,
@@ -305,6 +358,7 @@ export async function runPhase1Sense(
       bbWidthPct,
       atr14,
       adx14,
+      varianceRatio,
       supertrendDirection,
       source: techSource,
     },
@@ -327,6 +381,39 @@ export async function runPhase1Sense(
     candles: candles.slice(-48),
     cliRecords,
   };
+}
+
+/**
+ * Computes Lo-MacKinlay Variance Ratio VR(q=4) on log candle returns.
+ * VR < 0.85 signals strong mean-reversion (ideal grid environment);
+ * VR > 1.15 signals persistent momentum / breakout risk.
+ */
+function computeVarianceRatio(candles: CandleBar[], q: number = 4): number {
+  if (candles.length < q + 5) return 0.82;
+  const logRets: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const prev = Math.max(0.0001, candles[i - 1].close);
+    const cur = Math.max(0.0001, candles[i].close);
+    logRets.push(Math.log(cur / prev));
+  }
+  const mean1 = logRets.reduce((a, b) => a + b, 0) / logRets.length;
+  const var1 =
+    logRets.reduce((acc, r) => acc + Math.pow(r - mean1, 2), 0) /
+    Math.max(1, logRets.length - 1);
+  if (var1 <= 1e-12) return 0.8;
+
+  const qRets: number[] = [];
+  for (let i = q - 1; i < logRets.length; i++) {
+    let sum = 0;
+    for (let k = 0; k < q; k++) sum += logRets[i - k];
+    qRets.push(sum);
+  }
+  const meanQ = qRets.reduce((a, b) => a + b, 0) / Math.max(1, qRets.length);
+  const varQ =
+    qRets.reduce((acc, r) => acc + Math.pow(r - meanQ, 2), 0) /
+    Math.max(1, qRets.length - 1);
+
+  return Number(clamp(varQ / (q * var1), 0.35, 1.85).toFixed(2));
 }
 
 function parseCandles(raw: Array<string[]> | null): CandleBar[] {

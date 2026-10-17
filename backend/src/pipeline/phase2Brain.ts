@@ -46,6 +46,23 @@ export function runPhase2Brain(
       ? 'BEAR_TRAP'
       : 'NO_TRAP';
 
+  // 1b. 3-Sub-Agent Microstructure & Avellaneda-Stoikov Skew Model
+  // Agent 1 (L2 Orderbook Imbalance) + Agent 2 (Whale-Retail Divergence) + Agent 3 (Lo-MacKinlay Variance Ratio)
+  const obi = Number((sense.market.orderbookImbalance ?? 0).toFixed(4));
+  const microPx = Number((sense.market.microPx ?? lastPx).toFixed(4));
+  const varianceRatio = Number((sense.technicals.varianceRatio ?? 0.82).toFixed(2));
+  const alphaFlow = Number(
+    clamp(0.55 * obi - 0.45 * (dTrap / 3.0), -1, 1).toFixed(4)
+  );
+  const invRatio = clamp(
+    ((currentGridBot?.avaxInventory || 0) * lastPx) / 2.0,
+    0,
+    1
+  );
+  const reservationPx = Number(
+    (microPx + 0.35 * alphaFlow * atr - 0.25 * invRatio * atr).toFixed(4)
+  );
+
   // 2. Evaluate Grid Corridor & Drift Surgery Trigger
   const gridNum = 12;
   const recenteredMinPx = Number((lastPx - 2.5 * atr).toFixed(4));
@@ -68,6 +85,24 @@ export function runPhase2Brain(
   const targetSpan = Math.max(0.01, targetMaxPx - targetMinPx);
   const gridStepUsdt = Number((targetSpan / gridNum).toFixed(4));
   const gridStepPct = Number(((gridStepUsdt / lastPx) * 100).toFixed(2));
+
+  // Fee-Protected Optimal Inner-Rung Maker Buy & Sell Prices (2x Maker Fee = 0.16% + Net Alpha Spread)
+  const minProfitStep = Math.max(gridStepUsdt, lastPx * 0.0024);
+  const rawInnerBuy =
+    alphaFlow < -0.35 || trapClassification === 'BULL_TRAP'
+      ? reservationPx - 1.5 * minProfitStep
+      : Math.min(sense.market.bidPx, reservationPx - 0.35 * gridStepUsdt);
+  const optimalBuyPx = Number(Math.max(targetMinPx, rawInnerBuy).toFixed(3));
+  const baseEntryPx =
+    currentGridBot?.entryFillPx && currentGridBot.entryFillPx > 0
+      ? currentGridBot.entryFillPx
+      : optimalBuyPx;
+  const optimalSellPx = Number(
+    Math.max(
+      sense.market.askPx,
+      baseEntryPx + minProfitStep * (1 + 0.3 * Math.max(0, alphaFlow))
+    ).toFixed(3)
+  );
 
   const gridLevels: number[] = [];
   for (let i = 0; i <= gridNum; i++) {
@@ -217,6 +252,13 @@ export function runPhase2Brain(
       dTrap,
       dTrapBps,
       trapClassification,
+      obi,
+      microPx,
+      varianceRatio,
+      alphaFlow,
+      reservationPx,
+      optimalBuyPx,
+      optimalSellPx,
     },
     gridPlan: {
       minPx: targetMinPx,
@@ -232,6 +274,10 @@ export function runPhase2Brain(
       corridorPositionPct,
       requiresInFlightSurgery: isOutOfSafeCorridor,
       surgeryReason,
+      reservationPx,
+      optimalBuyPx,
+      optimalSellPx,
+      alphaFlow,
     },
     recommendedAction,
     actionSummary,
