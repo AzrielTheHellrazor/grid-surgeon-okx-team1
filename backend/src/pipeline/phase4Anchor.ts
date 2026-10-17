@@ -364,9 +364,14 @@ export async function runPhase4Anchor(
         state.contractAddress &&
         state.contractAddress.toLowerCase() !== PLACEHOLDER_CONTRACT_ADDRESS.toLowerCase()
       ) {
+        const baseNonce = await publicClient.getTransactionCount({
+          address,
+          blockTag: 'pending',
+        });
         const decisionTx = await walletClient.sendTransaction({
           to: state.contractAddress as `0x${string}`,
           data: encodedRecordDecisionCalldata,
+          nonce: baseNonce,
         });
         txHash = decisionTx;
         anchorStatus = 'BROADCAST_ON_CHAIN';
@@ -379,9 +384,10 @@ export async function runPhase4Anchor(
             await walletClient.sendTransaction({
               to: state.contractAddress as `0x${string}`,
               data: encodedGridSurgeryCalldata,
+              nonce: baseNonce + 1,
             });
           } catch {
-            // Non-fatal if second tx in same block hits nonce race
+            // Non-fatal if second tx hits RPC rate limit
           }
         }
       }

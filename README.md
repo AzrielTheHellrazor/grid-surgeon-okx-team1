@@ -18,6 +18,10 @@ Instead of acting as a naive LLM that guesses 1-minute candle directions, this a
 * **Main Task (Mandatory):** Autonomous AI agent built with **OKX Agent Trade Kit (ATK)** across **7 ATK skills** (`okx-cex-market`, `okx-sentiment-tracker`, `okx-cex-smartmoney`, `okx-cex-bot`, `okx-cex-trade`, `okx-cex-portfolio`, `okx-cex-earn`).
 * **Bonus 1 (+Extra Score):** Real market condition trading on `AVAX-USDT-SWAP` / `AVAX-USDT` (supports both `--demo` and Live modes).
 * **Bonus 2 (+Extra Score):** Deployed on **Avalanche** (`GridSurgeonRegistry.sol` on Avalanche C-Chain / Fuji Testnet).
+  * **Deployed Contract (`GridSurgeonRegistry.sol`):** [`0xf859e4f116305fbea13c295ee41b67d5bdef4b05`](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05)
+  * **Agent Operator Wallet:** [`0x07Ee05d717EBC2E47c0A97ad327d56A635920348`](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348)
+  * **Contract Deployment Tx:** [`0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1`](https://testnet.snowtrace.io/tx/0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1)
+  * **Genesis Decision Anchor Tx:** [`0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc`](https://testnet.snowtrace.io/tx/0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc)
 * **Judging Criteria Coverage:**
   * **35% Agent Architecture & Autonomy:** Fully autonomous 20-second `Sense → Reason → Act → Anchor` daemon loop with zero human intervention required.
   * **25% Product & Strategy:** Combines server-side grid bot surgery, whale divergence counter-trading, macro bunker protection, and high-water mark profit locking.
