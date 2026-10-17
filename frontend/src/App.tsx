@@ -477,9 +477,6 @@ export function App() {
   const [switchingBar, setSwitchingBar] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
-  const [inspectedBorder, setInspectedBorder] = useState<1 | 2 | 3 | 4 | null>(
-    null
-  );
   const [expandedCliId, setExpandedCliId] = useState<string | null>(null);
   const [cliSkillFilter, setCliSkillFilter] = useState<string>('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -871,35 +868,8 @@ export function App() {
             </div>
           </div>
 
-          {/* Right: 4-Border Status + Sync OKX + Auto-Pilot */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 font-mono text-[11px]">
-              {[
-                { num: 1 as const, label: '1.SENSE', ms: b1.meta.durationMs },
-                { num: 2 as const, label: '2.BRAIN', ms: b2.meta.durationMs },
-                { num: 3 as const, label: '3.EXEC', ms: b3.meta.durationMs },
-                { num: 4 as const, label: '4.CHAIN', ms: b4.meta.durationMs },
-              ].map((b) => (
-                <button
-                  key={b.num}
-                  type="button"
-                  onClick={() =>
-                    setInspectedBorder(inspectedBorder === b.num ? null : b.num)
-                  }
-                  className={cn(
-                    'px-2.5 py-1 rounded-md border transition flex items-center gap-1.5',
-                    inspectedBorder === b.num
-                      ? 'bg-white/[0.14] border-white/30 text-white'
-                      : 'bg-white/[0.03] border-white/[0.07] text-zinc-400 hover:text-zinc-200'
-                  )}
-                >
-                  <span className="size-1.5 rounded-full bg-emerald-400" />
-                  <span>{b.label}</span>
-                  <span className="text-zinc-500">{b.ms}ms</span>
-                </button>
-              ))}
-            </div>
-
+          {/* Right: Sync OKX + Auto-Pilot */}
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
               disabled={refreshing}
@@ -965,37 +935,6 @@ export function App() {
             >
               ×
             </button>
-          </div>
-        )}
-
-        {/* Expandable Border JSON Drawer (only visible when clicked) */}
-        {inspectedBorder && (
-          <div className="glass-well rounded-xl p-3 font-mono text-xs">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.07]">
-              <span className="text-zinc-200 font-semibold">
-                BORDER #{inspectedBorder} RAW PAYLOAD
-              </span>
-              <button
-                type="button"
-                onClick={() => setInspectedBorder(null)}
-                className="text-zinc-400 hover:text-white text-[11px]"
-              >
-                [Close ×]
-              </button>
-            </div>
-            <pre className="max-h-48 overflow-auto text-[11px] text-zinc-300">
-              {JSON.stringify(
-                inspectedBorder === 1
-                  ? b1
-                  : inspectedBorder === 2
-                  ? b2
-                  : inspectedBorder === 3
-                  ? b3
-                  : b4,
-                null,
-                2
-              )}
-            </pre>
           </div>
         )}
 
