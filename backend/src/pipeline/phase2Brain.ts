@@ -50,18 +50,19 @@ export function runPhase2Brain(
   // Agent 1 (L2 Orderbook Imbalance) + Agent 2 (Whale-Retail Divergence) + Agent 3 (Lo-MacKinlay Variance Ratio)
   const obi = Number((sense.market.orderbookImbalance ?? 0).toFixed(4));
   const microPx = Number((sense.market.microPx ?? lastPx).toFixed(4));
+  const vr = sense.technicals.varianceRatio ?? 1.0;
   const varianceRatio = Number((sense.technicals.varianceRatio ?? 0.82).toFixed(2));
   const alphaFlow = Number(
     clamp(0.55 * obi - 0.45 * (dTrap / 3.0), -1, 1).toFixed(4)
   );
   const invRatio = clamp(
-    ((currentGridBot?.avaxInventory || 0) * lastPx) / 2.0,
+    ((currentGridBot?.avaxInventory || 0) * lastPx) /
+      Math.max(18.0, ((currentGridBot?.avaxInventory || 0) * lastPx) + 12.0),
     0,
     1
   );
-  const reservationPx = Number(
-    (microPx + 0.35 * alphaFlow * atr - 0.25 * invRatio * atr).toFixed(4)
-  );
+  const gammaEff = 0.25 * clamp(vr, 0.75, 1.50);
+  const reservationPx = Number((microPx + alphaFlow * 0.35 * atr - gammaEff * invRatio * atr).toFixed(4));
 
   // 2. Evaluate Grid Corridor & Drift Surgery Trigger
   const gridNum = 12;
@@ -87,19 +88,29 @@ export function runPhase2Brain(
   const gridStepPct = Number(((gridStepUsdt / lastPx) * 100).toFixed(2));
 
   // Fee-Protected Optimal Inner-Rung Maker Buy & Sell Prices (2x Maker Fee = 0.16% + Net Alpha Spread)
-  const minProfitStep = Math.max(gridStepUsdt, lastPx * 0.0024);
-  const rawInnerBuy =
+  const minProfitStep = Math.max(gridStepUsdt, lastPx * 0.0022 * clamp(vr, 0.85, 1.35));
+  let rawBuyPx =
     alphaFlow < -0.35 || trapClassification === 'BULL_TRAP'
       ? reservationPx - 1.5 * minProfitStep
       : Math.min(sense.market.bidPx, reservationPx - 0.35 * gridStepUsdt);
-  const optimalBuyPx = Number(Math.max(targetMinPx, rawInnerBuy).toFixed(3));
+  if (
+    currentGridBot?.avaxInventory &&
+    currentGridBot.avaxInventory >= 0.1 &&
+    currentGridBot.entryFillPx
+  ) {
+    const ladderCapPx = currentGridBot.entryFillPx - gridStepUsdt * (1 + 0.5 * invRatio);
+    rawBuyPx = Math.min(rawBuyPx, ladderCapPx);
+  }
+  const safeBidCap = Math.max(targetMinPx, sense.market.bidPx || lastPx);
+  const optimalBuyPx = Number(clamp(rawBuyPx, targetMinPx, safeBidCap).toFixed(3));
   const baseEntryPx =
     currentGridBot?.entryFillPx && currentGridBot.entryFillPx > 0
       ? currentGridBot.entryFillPx
       : optimalBuyPx;
+  const rawSellPx = Math.max(sense.market.askPx, reservationPx + 0.65 * minProfitStep, (currentGridBot?.entryFillPx || lastPx) * 1.0022);
   const optimalSellPx = Number(
     Math.max(
-      sense.market.askPx,
+      rawSellPx,
       baseEntryPx + minProfitStep * (1 + 0.3 * Math.max(0, alphaFlow))
     ).toFixed(3)
   );

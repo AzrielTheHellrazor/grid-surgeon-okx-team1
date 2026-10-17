@@ -243,7 +243,7 @@ export async function runPhase1Sense(
   cliRecords.push(sentimentRes.record, smartMoneyRes.record, calendarRes.record);
 
   const extractedSentiment = sentimentRes.success
-    ? extractCliSentiment(sentimentRes.data)
+    ? extractCliSentiment(sentimentRes.data, baseCcy)
     : null;
   const bullishRatio = extractedSentiment
     ? extractedSentiment.bullishRatio
@@ -257,7 +257,7 @@ export async function runPhase1Sense(
   const headlineSummary = `Live OKX ${activeInstId}: $${lastPx.toFixed(4)} | RSI(14)=${rsi14.toFixed(1)} | 1H OI Δ=${oiDelta1hPct.toFixed(2)}%`;
 
   const extractedWhales = smartMoneyRes.success
-    ? extractCliSmartMoney(smartMoneyRes.data)
+    ? extractCliSmartMoney(smartMoneyRes.data, baseCcy)
     : null;
   const longNotionalUsd = extractedWhales
     ? extractedWhales.longNotionalUsd
@@ -644,7 +644,8 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 function extractCliSentiment(
-  raw: unknown
+  raw: unknown,
+  baseCcy = 'AVAX'
 ): { bullishRatio: number; bearishRatio: number } | null {
   try {
     const items = Array.isArray(raw)
@@ -652,6 +653,7 @@ function extractCliSentiment(
       : Array.isArray((raw as Record<string, unknown>)?.data)
       ? ((raw as Record<string, unknown>).data as unknown[])
       : [];
+    let fallback: { bullishRatio: number; bearishRatio: number } | null = null;
     for (const item of items) {
       if (typeof item === 'object' && item !== null) {
         const obj = item as Record<string, unknown>;
@@ -659,6 +661,9 @@ function extractCliSentiment(
         if (Array.isArray(obj.details)) {
           for (const d of obj.details) {
             const detailObj = d as Record<string, unknown>;
+            const isBaseCcy =
+              String(obj.ccy || detailObj.ccy || '').toUpperCase() ===
+              baseCcy.toUpperCase();
             const sent = detailObj?.sentiment as Record<string, unknown> | undefined;
             if (sent) {
               const bullVal = Number(sent.bullishRatio);
@@ -677,29 +682,41 @@ function extractCliSentiment(
                         0.95
                       )
                     : Number((1 - bull).toFixed(2));
-                return { bullishRatio: bull, bearishRatio: bear };
+                const parsed = { bullishRatio: bull, bearishRatio: bear };
+                if (isBaseCcy) return parsed;
+                if (!fallback) fallback = parsed;
               }
             }
           }
         }
+        const detailObj = (obj.detail ?? {}) as Record<string, unknown>;
+        const isBaseCcy =
+          String(obj.ccy || detailObj.ccy || '').toUpperCase() ===
+          baseCcy.toUpperCase();
         const b = Number(
           obj.bullishRatio ?? obj.bullishPct ?? obj.bullRatio ?? obj.positiveRatio
         );
         if (Number.isFinite(b) && b > 0) {
           const normalized = b > 1 ? b / 100 : b;
           const bull = clamp(Number(normalized.toFixed(2)), 0.05, 0.95);
-          return { bullishRatio: bull, bearishRatio: Number((1 - bull).toFixed(2)) };
+          const parsed = {
+            bullishRatio: bull,
+            bearishRatio: Number((1 - bull).toFixed(2)),
+          };
+          if (isBaseCcy) return parsed;
+          if (!fallback) fallback = parsed;
         }
       }
     }
-    return null;
+    return fallback;
   } catch {
     return null;
   }
 }
 
 function extractCliSmartMoney(
-  raw: unknown
+  raw: unknown,
+  baseCcy = 'AVAX'
 ): { longNotionalUsd: number; shortNotionalUsd: number } | null {
   try {
     const items = Array.isArray(raw)
@@ -707,9 +724,14 @@ function extractCliSmartMoney(
       : Array.isArray((raw as Record<string, unknown>)?.data)
       ? ((raw as Record<string, unknown>).data as unknown[])
       : [];
+    let fallback: { longNotionalUsd: number; shortNotionalUsd: number } | null = null;
     for (const item of items) {
       if (typeof item === 'object' && item !== null) {
         const obj = item as Record<string, unknown>;
+        const detailObj = (obj.detail ?? obj.notional ?? {}) as Record<string, unknown>;
+        const isBaseCcy =
+          String(obj.ccy || detailObj.ccy || obj.instCcy || '').toUpperCase() ===
+          baseCcy.toUpperCase();
         const notionalObj = obj.notional as Record<string, unknown> | undefined;
         const l = Number(
           notionalObj?.longNotionalUsdt ??
@@ -726,14 +748,16 @@ function extractCliSmartMoney(
             obj.sellVolUsd
         );
         if (Number.isFinite(l) && Number.isFinite(s) && (l > 0 || s > 0)) {
-          return {
+          const parsed = {
             longNotionalUsd: Math.round(l),
             shortNotionalUsd: Math.round(s),
           };
+          if (isBaseCcy) return parsed;
+          if (!fallback) fallback = parsed;
         }
       }
     }
-    return null;
+    return fallback;
   } catch {
     return null;
   }
