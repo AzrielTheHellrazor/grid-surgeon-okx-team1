@@ -210,7 +210,22 @@ function summarizeCliOutput(args: string[], parsed: unknown): string {
     }
     if (typeof first === 'object' && first !== null) {
       const obj = first as Record<string, unknown>;
-      if ('last' in obj) {
+      if ('longLiqPx' in obj || 'shortLiqPx' in obj) {
+        return `Grid Liquidation Price Verified: Long Liq $${obj.longLiqPx} | Short Liq $${obj.shortLiqPx}`;
+      }
+      if ('oiDeltaPct' in obj && 'instId' in obj) {
+        return `OI Scanner (${parsed.length} swaps): Top mover ${obj.instId} (1H OI Δ=${Number(obj.oiDeltaPct).toFixed(2)}%)`;
+      }
+      if ('details' in obj && Array.isArray(obj.details)) {
+        const avax = (obj.details as Array<Record<string, unknown>>).find(
+          (d) => d.ccy === 'AVAX'
+        );
+        const sent = avax?.sentiment as Record<string, unknown> | undefined;
+        if (sent) {
+          return `Live Social Sentiment (AVAX): ${Math.round(Number(sent.bullishRatio) * 100)}% Bullish / ${Math.round(Number(sent.bearishRatio) * 100)}% Bearish (${sent.label})`;
+        }
+      }
+      if ('last' in obj && 'high24h' in obj) {
         return `Ticker ${obj.instId}: last=$${obj.last} (24h High $${obj.high24h} / Low $${obj.low24h})`;
       }
       if ('fundingRate' in obj) {
@@ -230,6 +245,13 @@ function summarizeCliOutput(args: string[], parsed: unknown): string {
   }
   if (typeof parsed === 'object' && parsed !== null) {
     const obj = parsed as Record<string, unknown>;
+    if ('data' in obj && Array.isArray(obj.data) && obj.data.length > 0) {
+      const firstRow = obj.data[0] as Record<string, unknown>;
+      const notional = firstRow?.notional as Record<string, unknown> | undefined;
+      if (notional?.longNotionalUsdt) {
+        return `Live SmartMoney Whales (${firstRow.ccy}): Long $${Math.round(Number(notional.longNotionalUsdt)).toLocaleString()} vs Short $${Math.round(Number(notional.shortNotionalUsdt)).toLocaleString()}`;
+      }
+    }
     if ('algoId' in obj) return `OKX Algo #${obj.algoId} executed`;
     if ('ordId' in obj) return `OKX Order #${obj.ordId} executed`;
     if ('transId' in obj) return `OKX Transfer #${obj.transId} completed`;
