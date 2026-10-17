@@ -233,12 +233,23 @@ export async function runPhase3Execute(
 
   const spotSizing =
     sense.spotInstId === 'BTC-USDT'
-      ? { minSellSz: 0.00001, buySz: '0.000011', sellSz: '0.00001', pxDec: 1 }
+      ? { minSellSz: 0.00001, buySz: '0.000041', sellSz: '0.00004', pxDec: 1 }
       : sense.spotInstId === 'ETH-USDT'
-      ? { minSellSz: 0.0001, buySz: '0.00025', sellSz: '0.00024', pxDec: 2 }
+      ? { minSellSz: 0.0001, buySz: '0.00151', sellSz: '0.0015', pxDec: 2 }
       : sense.spotInstId === 'SOL-USDT'
-      ? { minSellSz: 0.01, buySz: '0.0101', sellSz: '0.01', pxDec: 2 }
-      : { minSellSz: 0.1, buySz: '0.1002', sellSz: '0.1', pxDec: 3 };
+      ? { minSellSz: 0.01, buySz: '0.0501', sellSz: '0.05', pxDec: 2 }
+      : {
+          minSellSz: 0.1,
+          buySz: usdtEquity >= 12 ? '0.501' : '0.1002',
+          sellSz: avaxInventory >= 0.5 ? '0.5' : '0.1',
+          pxDec: 3,
+        };
+
+  const entryAnchorPx = state.activeGridBot?.entryFillPx || lastPx;
+  const minProfitSellPx = Number(
+    (entryAnchorPx * 1.002).toFixed(spotSizing.pxDec)
+  );
+  const effectiveOptimalSellPx = Math.max(optimalSellPx, minProfitSellPx);
 
   // 6. Autonomous Two-Leg Ping-Pong Maker State Machine (When no order is currently open)
   if (
@@ -248,7 +259,7 @@ export async function runPhase3Execute(
   ) {
     if (avaxInventory >= spotSizing.minSellSz) {
       // Leg B: Buy filled! Place Net-EV Fee-Protected Take-Profit Limit SELL
-      const sellPxStr = optimalSellPx.toFixed(spotSizing.pxDec);
+      const sellPxStr = effectiveOptimalSellPx.toFixed(spotSizing.pxDec);
       const sellCreateRes = await runOkxCli<Array<Record<string, string>>>({
         args: [
           'spot',
@@ -289,6 +300,10 @@ export async function runPhase3Execute(
       usdtEquity >= Number(spotSizing.buySz) * optimalBuyPx * 1.002
     ) {
       // Leg A: Seek entry on Optimal Inner Rung below Stoikov Micro-Price
+      if (state.activeGridBot?.pingPongPhase === 'HARVESTING_EXIT') {
+        state.activeGridBot.roundTripsCompleted =
+          (state.activeGridBot.roundTripsCompleted || 0) + 1;
+      }
       const buyPxStr = optimalBuyPx.toFixed(spotSizing.pxDec);
       const buyCreateRes = await runOkxCli<Array<Record<string, string>>>({
         args: [
@@ -428,7 +443,8 @@ export async function runPhase3Execute(
     const spotSide = (firstLiveSpot?.side || 'buy').toLowerCase();
     const currentSpotPx = Number(firstLiveSpot?.px || 0);
     const spotSz = Number(firstLiveSpot?.sz || spotSizing.buySz);
-    const rawTargetMakerPx = spotSide === 'sell' ? optimalSellPx : optimalBuyPx;
+    const rawTargetMakerPx =
+      spotSide === 'sell' ? effectiveOptimalSellPx : optimalBuyPx;
     const decMult = Math.pow(10, spotSizing.pxDec);
     const maxAffordableBuyPx =
       spotSide === 'buy' && spotSz > 0 && usdtEquity > 0
