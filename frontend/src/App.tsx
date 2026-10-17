@@ -484,7 +484,6 @@ export function App() {
   const [verifyingProof, setVerifyingProof] = useState<boolean>(false);
   const [proofVerifiedMsg, setProofVerifiedMsg] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
-  const [showGuide, setShowGuide] = useState<boolean>(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -863,129 +862,7 @@ export function App() {
       </header>
 
       {/* MAIN WORKSPACE */}
-      <main className="max-w-[1640px] w-full mx-auto px-4 py-3.5 flex flex-col gap-3 flex-1">
-        {/* SELF-SPEAKING LIVE AGENT NARRATOR BAR (Speaks to visitors when creator is away) */}
-        <div className="glass-subcard rounded-xl px-3.5 py-2.5 border border-emerald-400/20 flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 text-xs leading-relaxed text-zinc-200 min-w-0 flex-1">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-400/35 text-emerald-300 font-mono text-[10px] font-semibold shrink-0">
-                <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
-                LIVE AGENT NARRATOR
-              </span>
-              <span className="text-zinc-200">
-                {gridBot?.avaxInventory && gridBot.avaxInventory >= 0.05 ? (
-                  <>
-                    <strong className="text-white">Grid-Surgeon</strong> is trading live on a real OKX account (
-                    <strong className="text-emerald-300">
-                      ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
-                    </strong>
-                    ): Holding{' '}
-                    <strong className="text-amber-300">
-                      {gridBot.avaxInventory.toFixed(2)} {b1.instId.split('-')[0]}
-                    </strong>{' '}
-                    (avg cost{' '}
-                    <strong className="text-amber-300">
-                      ${(gridBot.entryFillPx || b1.market.lastPx).toFixed(3)}
-                    </strong>
-                    ) while market is{' '}
-                    <strong className="text-white">
-                      ${formatPrice(b1.market.lastPx)}
-                    </strong>
-                    ; waiting to harvest profit via split sell orders at{' '}
-                    <strong className="text-emerald-300">
-                      T1 ${gridBot.activeOrderPx?.toFixed(3)}
-                    </strong>
-                    {gridBot.tranche2OrderPx ? (
-                      <>
-                        {' '}
-                        and{' '}
-                        <strong className="text-emerald-300">
-                          T2 ${gridBot.tranche2OrderPx.toFixed(3)}
-                        </strong>
-                      </>
-                    ) : null}{' '}
-                    and anchoring every cycle on{' '}
-                    <strong className="text-amber-300">
-                      Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
-                    </strong>
-                    .
-                  </>
-                ) : (
-                  <>
-                    <strong className="text-white">Grid-Surgeon</strong> is trading live on a real OKX account (
-                    <strong className="text-emerald-300">
-                      ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
-                    </strong>
-                    ): Tracking{' '}
-                    <strong className="text-white">{b1.instId.split('-')[0]}</strong>{' '}
-                    at <strong className="text-white">${formatPrice(b1.market.lastPx)}</strong>{' '}
-                    inside its 1m volatility corridor, scanning Whale/Retail trap score{' '}
-                    <strong className="text-emerald-300">
-                      D_trap {b2.formulas.dTrap >= 0 ? '+' : ''}
-                      {b2.formulas.dTrap.toFixed(2)}
-                    </strong>
-                    , and anchoring every decision on{' '}
-                    <strong className="text-amber-300">
-                      Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
-                    </strong>
-                    .
-                  </>
-                )}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowGuide((v) => !v)}
-              className={cn(
-                'metal-btn px-2.5 py-1 rounded-lg font-mono text-[11px] shrink-0 flex items-center gap-1',
-                showGuide
-                  ? 'border-emerald-400/50 text-emerald-300'
-                  : 'text-zinc-200'
-              )}
-            >
-              <span>{showGuide ? 'Close Guide ×' : '? How It Works (4-Step Guide)'}</span>
-            </button>
-          </div>
-
-          {showGuide && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1.5 border-t border-white/[0.08] text-[11px] text-zinc-300">
-              <div className="glass-well rounded-lg p-2.5">
-                <div className="font-mono font-semibold text-emerald-300 mb-0.5">
-                  1. Live Order Corridor & Surgery
-                </div>
-                <p className="text-zinc-400 leading-snug">
-                  When price drifts near grid edges, the agent shifts the corridor in-flight via OKX CLI instead of closing at a loss. Amber line is VWAP entry cost; green lines are active T1/T2 take-profit sell orders.
-                </p>
-              </div>
-              <div className="glass-well rounded-lg p-2.5">
-                <div className="font-mono font-semibold text-rose-300 mb-0.5">
-                  2. Whale vs Retail Trap Radar
-                </div>
-                <p className="text-zinc-400 leading-snug">
-                  Contrasts retail crowd sentiment against Smart Money whale positioning. If D_trap exceeds +1.10 (Bull Trap), the agent blocks new spot buy entries to avoid buying into whale distribution.
-                </p>
-              </div>
-              <div className="glass-well rounded-lg p-2.5">
-                <div className="font-mono font-semibold text-sky-300 mb-0.5">
-                  3. Live OKX CLI Proof Stream
-                </div>
-                <p className="text-zinc-400 leading-snug">
-                  Zero mock data. Every real <code className="text-zinc-200">okx ... --json</code> command executed by the backend and its raw exchange response is streamed here with exact millisecond latency.
-                </p>
-              </div>
-              <div className="glass-well rounded-lg p-2.5">
-                <div className="font-mono font-semibold text-amber-300 mb-0.5">
-                  4. Yield Vault & Avalanche Seal
-                </div>
-                <p className="text-zinc-400 leading-snug">
-                  Sweeps realized USDT profits into OKX Simple Earn and anchors a cryptographic <code className="text-zinc-200">keccak256</code> proof of every cycle to verified smart contracts on Avalanche Fuji C-Chain.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
+      <main className="max-w-[1640px] w-full mx-auto px-4 py-4 flex flex-col gap-3.5 flex-1">
         {errorBanner && (
           <div className="glass-subcard rounded-lg px-3 py-1.5 text-amber-300 text-xs font-mono flex items-center justify-between">
             <span>{errorBanner}</span>
