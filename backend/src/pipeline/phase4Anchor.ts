@@ -480,6 +480,16 @@ export async function runPhase4Anchor(
  * Dedicated ERC-8004 Trustless Agent Validator & Passport Builder (`ERC8004TrustValidator`)
  * Constructs the 3 Registry states (Identity, Validation, Reputation) + official EIP-8004 Agent Registration JSON.
  */
+export const AVA_LABS_IDENTITY_REGISTRY =
+  '0x8004A818BFB912233c491871b3d84c89A494BD9e';
+export const AVA_LABS_REPUTATION_REGISTRY =
+  '0x8004B663056A597Dffe9eCcC1965A193B7388713';
+export const DEPLOYED_VALIDATION_REGISTRY =
+  '0xffe3478342c44f82cb1690638c162716e8648290';
+export const DEPLOYED_TASK_AGENT =
+  '0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530';
+export const MINTED_AVA_LABS_AGENT_ID = 257;
+
 export function buildERC8004AgentPassport(
   operatorAddress: string,
   contractAddress: string,
@@ -497,18 +507,23 @@ export function buildERC8004AgentPassport(
 
   const agentCardJson: Record<string, unknown> = {
     type: 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1',
+    boilerplateStandard: 'https://github.com/ava-labs/8004-boilerplate',
     name: 'Grid-Surgeon (Autonomous OKX ATK Bot Surgeon & Trap Hunter)',
     description:
       'Autonomous self-healing AVAX-USDT-SWAP grid bot surgeon, retail-vs-whale divergence trap hunter, and high-water mark Simple Earn profit sweeper anchored on Avalanche.',
-    agentId: 1,
+    agentId: MINTED_AVA_LABS_AGENT_ID,
     domain: 'grid-surgeon.okx.avax',
     operatorWallet: operatorAddress,
     chainId: 43113,
     network: 'Avalanche Fuji Testnet / C-Chain',
     registries: {
-      identityRegistry: contractAddress,
-      validationRegistry: contractAddress,
-      reputationRegistry: contractAddress,
+      identityRegistry: AVA_LABS_IDENTITY_REGISTRY,
+      reputationRegistry: AVA_LABS_REPUTATION_REGISTRY,
+      validationRegistry: DEPLOYED_VALIDATION_REGISTRY,
+      taskAgent: DEPLOYED_TASK_AGENT,
+      gridSurgeonRegistry: contractAddress,
+      registrationTxHash:
+        '0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804',
     },
     capabilities: [
       'okx-cex-market (Live OHLCV, BB, RSI, ATR, ADX, Funding, OI Delta)',
@@ -520,6 +535,7 @@ export function buildERC8004AgentPassport(
       'okx-cex-earn (Autonomous Simple Earn Yield Locking)',
     ],
     trustModels: [
+      'erc-8004-ava-labs-boilerplate',
       'eip-191-ecdsa-signature',
       'keccak256-deterministic-reasoning-hash',
       'onchain-circuit-breaker-governor',
@@ -544,18 +560,18 @@ export function buildERC8004AgentPassport(
     standard: 'ERC-8004 (Trustless Agents v1)',
     validatorAgentName: 'ERC8004TrustValidator',
     identityRegistry: {
-      agentId: 1,
+      agentId: MINTED_AVA_LABS_AGENT_ID,
       agentDomain: 'grid-surgeon.okx.avax',
       agentCardUri: '/.well-known/agent-card.json',
       operatorAddress,
-      registryContract: contractAddress,
+      registryContract: AVA_LABS_IDENTITY_REGISTRY,
       status: 'REGISTERED_ON_CHAIN',
     },
     validationRegistry: {
       reasoningHash: latestReasoningHash,
       signatureVerified: true,
-      validatorAddress: operatorAddress,
-      validationScheme: 'EIP-191 ECDSA + Keccak256 Deterministic Audit',
+      validatorAddress: DEPLOYED_VALIDATION_REGISTRY,
+      validationScheme: 'Ava Labs ValidationRegistry + EIP-191 ECDSA Audit',
       totalValidatedTasks,
     },
     reputationRegistry: {

@@ -17,31 +17,36 @@ Instead of acting as a naive LLM that guesses 1-minute candle directions, this a
 ## 2. Hackathon Alignment & Scoring Strategy
 * **Main Task (Mandatory):** Autonomous AI agent built with **OKX Agent Trade Kit (ATK)** across **7 ATK skills** (`okx-cex-market`, `okx-sentiment-tracker`, `okx-cex-smartmoney`, `okx-cex-bot`, `okx-cex-trade`, `okx-cex-portfolio`, `okx-cex-earn`).
 * **Bonus 1 (+Extra Score):** Real market condition trading on `AVAX-USDT-SWAP` / `AVAX-USDT` (supports both `--demo` and Live modes).
-* **Bonus 2 (+Extra Score):** Deployed on **Avalanche** with full **ERC-8004 ("Trustless Agents") Standard** (`Identity Registry`, `Validation Registry`, `Reputation Registry`) in [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol).
-  * **ERC-8004 Registry Contract (`GridSurgeonRegistry.sol`):** [`0x7c52f6b7b588698700abbac6cbe37f3cfca305cd`](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd)
+* **Bonus 2 (+Extra Score):** Deployed on **Avalanche Fuji Testnet (`43113`)** using the official **Ava Labs ERC-8004 ("Trustless Agents") Boilerplate Standard** ([`ava-labs/8004-boilerplate`](https://github.com/ava-labs/8004-boilerplate)) across all 5 contracts (`IdentityRegistry`, `ReputationRegistry`, `ValidationRegistry`, `TaskAgent`, and `GridSurgeonRegistry`).
+  * **Official Ava Labs Shared `IdentityRegistry.sol`:** [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.snowtrace.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) *(Minted Official Agent NFT: **`Agent ID #257`**)*
+  * **Official Ava Labs Shared `ReputationRegistry.sol`:** [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.snowtrace.io/address/0x8004B663056A597Dffe9eCcC1965A193B7388713)
+  * **Deployed `ValidationRegistry.sol` (`ava-labs/8004-boilerplate`):** [`0xffe3478342c44f82cb1690638c162716e8648290`](https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290)
+  * **Deployed `TaskAgent.sol` (`ava-labs/8004-boilerplate`):** [`0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530`](https://testnet.snowtrace.io/address/0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530)
+  * **Deployed `GridSurgeonRegistry.sol` (Audit & Circuit Breaker):** [`0x7c52f6b7b588698700abbac6cbe37f3cfca305cd`](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd)
   * **Agent Operator Wallet:** [`0x07Ee05d717EBC2E47c0A97ad327d56A635920348`](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348)
-  * **ERC-8004 Contract Deploy Tx:** [`0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf`](https://testnet.snowtrace.io/tx/0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf)
-  * **Genesis ERC-8004 Decision + Validation + Reputation Tx:** [`0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b`](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b)
 * **Judging Criteria Coverage:**
   * **35% Agent Architecture & Autonomy:** Fully autonomous 20-second `Sense → Reason → Act → Anchor` daemon loop with dedicated **`ERC8004TrustValidator`** verification agent.
   * **25% Product & Strategy:** Combines server-side grid bot surgery, whale divergence counter-trading, macro bunker protection, and high-water mark profit locking.
-  * **20% Technical Quality:** Uses deterministic quantitative formulas + real OKX CLI JSON pipelines + **ERC-8004 Trustless Agent** on-chain anchoring.
+  * **20% Technical Quality:** Uses deterministic quantitative formulas + real OKX CLI JSON pipelines + **Official Ava Labs ERC-8004 Trustless Agent** on-chain anchoring.
   * **20% Live Demo & Presentation:** Includes a 4-quadrant real-time Command Center UI with 5 one-click stage demo scenario buttons.
 
 ---
 
-## 🔺 Live Avalanche & ERC-8004 ("Trustless Agents") On-Chain Verification (Fuji Testnet `43113`)
+## 🔺 Live Avalanche & Official Ava Labs ERC-8004 (`8004-boilerplate`) On-Chain Verification (Fuji Testnet `43113`)
 
-Every autonomous cycle is verified by the **`ERC8004TrustValidator`** agent, which hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, updates the **3 ERC-8004 Registries (`Identity #1`, `Validation`, `Reputation`)**, and anchors it on **Avalanche Fuji Testnet** via [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol):
+Grid-Surgeon integrates the official **[`ava-labs/8004-boilerplate`](https://github.com/ava-labs/8004-boilerplate)** architecture (`IdentityRegistry`, `ReputationRegistry`, `ValidationRegistry`, `TaskAgent`, and `.well-known/agent-card.json`) alongside [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol). Every autonomous cycle is verified by the **`ERC8004TrustValidator`** agent, which hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, and anchors it on **Avalanche Fuji Testnet**:
 
-| On-Chain Artifact / Endpoint | Address / Transaction Hash / URI | Explorer / Live Link |
+| On-Chain Contract / Artifact | Address / Transaction Hash / ID | Snowtrace Explorer / Live Endpoint |
 | :--- | :--- | :--- |
-| **ERC-8004 `GridSurgeonRegistry.sol` Contract** | `0x7c52f6b7b588698700abbac6cbe37f3cfca305cd` | [View Contract on Snowtrace ↗](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd) |
-| **ERC-8004 Agent Identity** | `Agent ID #1` (`grid-surgeon.okx.avax`) | `http://localhost:4001/.well-known/agent-card.json` |
-| **Autonomous Operator Wallet** | `0x07Ee05d717EBC2E47c0A97ad327d56A635920348` | [View Operator on Snowtrace ↗](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348) |
-| **ERC-8004 Contract Deployment Tx** | `0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf` | [View Deploy Tx ↗](https://testnet.snowtrace.io/tx/0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf) |
-| **ERC-8004 Validation & Reputation Anchor Tx** | `0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b` | [View Anchor Tx ↗](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b) |
-| **Previous V1 Registry Contract** | `0xf859e4f116305fbea13c295ee41b67d5bdef4b05` | [View V1 Contract ↗](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05) |
+| **Official Ava Labs `IdentityRegistry` (Shared)** | `0x8004A818BFB912233c491871b3d84c89A494BD9e` | [View Official IdentityRegistry ↗](https://testnet.snowtrace.io/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
+| **Minted Official ERC-8004 Agent Identity NFT** | **`Agent ID #257`** (`grid-surgeon.okx.avax`) | [View Registration Tx (`0x1b31a4...9804`) ↗](https://testnet.snowtrace.io/tx/0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804) |
+| **Official Ava Labs `ReputationRegistry` (Shared)** | `0x8004B663056A597Dffe9eCcC1965A193B7388713` | [View Official ReputationRegistry ↗](https://testnet.snowtrace.io/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
+| **Deployed `ValidationRegistry.sol` (Per-Agent)** | `0xffe3478342c44f82cb1690638c162716e8648290` | [View ValidationRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290) |
+| **Deployed `TaskAgent.sol` (Per-Agent)** | `0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530` | [View TaskAgent on Snowtrace ↗](https://testnet.snowtrace.io/address/0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530) |
+| **Deployed `GridSurgeonRegistry.sol` (Decision Ledger)** | `0x7c52f6b7b588698700abbac6cbe37f3cfca305cd` | [View GridSurgeonRegistry on Snowtrace ↗](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd) |
+| **Genesis Decision + Validation Anchor Tx** | `0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b` | [View Decision Anchor Tx ↗](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b) |
+| **Autonomous Operator Wallet** | `0x07Ee05d717EBC2E47c0A97ad327d56A635920348` | [View Operator Wallet ↗](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348) |
+| **ERC-8004 Discovery Manifest (`agent-card.json`)** | `/.well-known/agent-card.json` | `http://localhost:4001/.well-known/agent-card.json` |
 
 ---
 
@@ -234,38 +239,36 @@ okx earn savings balance USDT --json
 
 ---
 
-## 6. Recommended Folder Structure for Antigravity IDE
-
-When building this project in Antigravity IDE, structure the repository as follows:
+## 6. Repository Architecture (`OKX ATK` + `ava-labs/8004-boilerplate`)
 
 ```
 Grid-Surgeon/
 ├── README.md
+├── STAGE_DEMO_PLAYBOOK.md                   # 10-Minute Hackathon Stage Pitch & Demo Guide
+├── deployment-fuji.json                     # Live Avalanche Fuji (43113) Deployment Manifest
+├── config/
+│   └── agent.config.js                      # Ava Labs 8004-boilerplate Agent Configuration
+├── .well-known/
+│   └── agent-card.json                      # EIP-8004 Agent Discovery Card (Agent ID #257)
 ├── contracts/
-│   └── GridSurgeonRegistry.sol              # Avalanche C-Chain Audit & Circuit-Breaker Contract
+│   ├── IIdentityRegistry.sol                # Official Ava Labs ERC-8004 Identity Interface
+│   ├── IdentityRegistry.sol                 # Official Ava Labs ERC-721 Agent Identity Registry
+│   ├── IReputationRegistry.sol              # Official Ava Labs ERC-8004 Reputation Interface
+│   ├── ReputationRegistry.sol               # Official Ava Labs Agent Reputation Registry
+│   ├── IValidationRegistry.sol              # Official Ava Labs ERC-8004 Validation Interface
+│   ├── ValidationRegistry.sol               # Deployed on Fuji: 0xffe3478342c44f82cb1690638c162716e8648290
+│   ├── TaskAgent.sol                        # Deployed on Fuji: 0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530
+│   └── GridSurgeonRegistry.sol              # Deployed on Fuji: 0x7c52f6b7b588698700abbac6cbe37f3cfca305cd
 ├── backend/
-│   ├── src/
-│   │   ├── okxCliRunner.ts                  # Wrapper around `okx ... --json` CLI commands
-│   │   ├── sensors/
-│   │   │   ├── marketSensor.ts              # ADX, BB, RSI, OI-Change, Funding Rate
-│   │   │   ├── sentimentSensor.ts           # Coin sentiment, trend, macro calendar
-│   │   │   └── smartMoneySensor.ts          # Whale long/short notional & signal trends
-│   │   ├── brain/
-│   │   │   ├── regimeClassifier.ts          # Ranging vs Breakout vs Macro Bunker math
-│   │   │   └── trapDetector.ts              # Retail-vs-Whale divergence math
-│   │   ├── executors/
-│   │   │   ├── gridSurgeon.ts               # `bot grid create`, `liquidate-price`, `amend`, `stop`
-│   │   │   ├── trapTrader.ts                # `swap place`, `swap algo trail`, `bot dca create`
-│   │   │   └── profitSweeper.ts             # `account transfer` (18->6) + `earn savings purchase`
-│   │   ├── avalanche/
-│   │   │   └── anchorClient.ts              # viem/ethers client publishing proofs to Avalanche
-│   │   └── server.ts                        # Express + WebSocket server streaming live telemetry
+│   └── src/
+│       ├── pipeline/
+│       │   ├── phase1Sense.ts               # BORDER 1: Live OKX ATK CLI Multi-Modal Telemetry
+│       │   ├── phase2Brain.ts               # BORDER 2: Regime, Trap Score (D_trap) & Drift Math
+│       │   ├── phase3Execute.ts             # BORDER 3: In-Flight Grid Surgery & Simple Earn Sweep
+│       │   ├── phase4Anchor.ts              # BORDER 4: Avalanche Fuji & ERC-8004 On-Chain Anchor
+│       │   └── orchestrator.ts              # Unbreakable 4-Border Pipeline Orchestrator
+│       └── server.ts                        # Express API + /.well-known/agent-card.json Server
 └── frontend/
-    └── src/                                 # Next.js / Vite 4-Quadrant Command Center Dashboard
+    └── src/                                 # React + Tailwind 4-Quadrant Command Center UI
 ```
 
----
-
-## 7. Next Steps in Antigravity IDE
-Open this folder in Antigravity IDE and prompt the agent:
-> *"Read `README.md` and `contracts/GridSurgeonRegistry.sol`. Initialize the TypeScript backend and Next.js/Vite 4-Quadrant Command Center UI, starting with `okxCliRunner.ts` and the live multi-modal sensor pipeline."*

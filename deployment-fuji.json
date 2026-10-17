@@ -1,0 +1,24 @@
+{
+  "network": "fuji",
+  "chainId": 43113,
+  "deployer": "0x07Ee05d717EBC2E47c0A97ad327d56A635920348",
+  "contracts": {
+    "identityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "validationRegistry": "0xffe3478342c44f82cb1690638c162716e8648290",
+    "taskAgent": "0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530",
+    "gridSurgeonRegistry": "0x7c52f6b7b588698700abbac6cbe37f3cfca305cd"
+  },
+  "transactions": {
+    "registerAgentTx": "0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804",
+    "gridSurgeonDeployTx": "0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf",
+    "genesisDecisionTx": "0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b"
+  },
+  "agent": {
+    "id": "257",
+    "name": "Grid-Surgeon",
+    "description": "Autonomous OKX ATK Bot Surgeon, Whale-Divergence Trap Hunter & Simple Earn Profit Sweeper on AVAX",
+    "metadataURI": "https://raw.githubusercontent.com/AzrielTheHellrazor/grid-surgeon-okx-team1/main/.well-known/agent-card.json"
+  },
+  "timestamp": "2026-10-17T08:25:50.612Z"
+}

@@ -1,0 +1,39 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "Grid-Surgeon",
+  "description": "Autonomous self-healing OKX ATK grid bot surgeon, retail-vs-whale divergence trap hunter, and high-water mark Simple Earn profit sweeper on AVAX.",
+  "agentId": 257,
+  "domain": "grid-surgeon.okx.avax",
+  "operatorWallet": "0x07Ee05d717EBC2E47c0A97ad327d56A635920348",
+  "chainId": 43113,
+  "network": "Avalanche Fuji Testnet / C-Chain",
+  "boilerplateStandard": "https://github.com/ava-labs/8004-boilerplate",
+  "officialAvaLabsRegistries": {
+    "identityRegistry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "validationRegistry": "0xffe3478342c44f82cb1690638c162716e8648290",
+    "taskAgent": "0xc08c7203e32d4bc0a17b5463a2c8b675c1e4c530",
+    "gridSurgeonRegistry": "0x7c52f6b7b588698700abbac6cbe37f3cfca305cd",
+    "registrationTxHash": "0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804"
+  },
+  "capabilities": [
+    "okx-cex-market (Live OHLCV, BB, RSI, ATR, ADX, Funding, OI Delta)",
+    "okx-sentiment-tracker (Retail Bull/Bear Sentiment & Macro Bunker)",
+    "okx-cex-smartmoney (Whale Net Positioning & Divergence Trap Score)",
+    "okx-cex-bot (In-Flight Grid Bot Surgery via okx bot grid amend & DCA)",
+    "okx-cex-trade (Counter-Trap Perpetual Swap OCO + 1.5% Trailing Stop)",
+    "okx-cex-portfolio (High-Water Mark Profit Transfer 18 -> 6)",
+    "okx-cex-earn (Autonomous Simple Earn Yield Locking)"
+  ],
+  "trustModels": [
+    "erc-8004-ava-labs-boilerplate",
+    "eip-191-ecdsa-signature",
+    "keccak256-deterministic-reasoning-hash",
+    "onchain-circuit-breaker-governor"
+  ],
+  "endpoints": {
+    "agentCard": "http://localhost:4001/.well-known/agent-card.json",
+    "statusApi": "http://localhost:4001/api/status",
+    "cycleTriggerApi": "http://localhost:4001/api/cycle"
+  }
+}
