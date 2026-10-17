@@ -566,6 +566,33 @@ function extractCliSentiment(
     for (const item of items) {
       if (typeof item === 'object' && item !== null) {
         const obj = item as Record<string, unknown>;
+        // Support live `okx news coin-sentiment` schema: [{ details: [{ ccy, sentiment: { bullishRatio, bearishRatio } }] }]
+        if (Array.isArray(obj.details)) {
+          for (const d of obj.details) {
+            const detailObj = d as Record<string, unknown>;
+            const sent = detailObj?.sentiment as Record<string, unknown> | undefined;
+            if (sent) {
+              const bullVal = Number(sent.bullishRatio);
+              const bearVal = Number(sent.bearishRatio);
+              if (Number.isFinite(bullVal) && bullVal > 0) {
+                const bull = clamp(
+                  Number((bullVal > 1 ? bullVal / 100 : bullVal).toFixed(2)),
+                  0.05,
+                  0.95
+                );
+                const bear =
+                  Number.isFinite(bearVal) && bearVal > 0
+                    ? clamp(
+                        Number((bearVal > 1 ? bearVal / 100 : bearVal).toFixed(2)),
+                        0.05,
+                        0.95
+                      )
+                    : Number((1 - bull).toFixed(2));
+                return { bullishRatio: bull, bearishRatio: bear };
+              }
+            }
+          }
+        }
         const b = Number(
           obj.bullishRatio ?? obj.bullishPct ?? obj.bullRatio ?? obj.positiveRatio
         );
@@ -594,11 +621,20 @@ function extractCliSmartMoney(
     for (const item of items) {
       if (typeof item === 'object' && item !== null) {
         const obj = item as Record<string, unknown>;
+        const notionalObj = obj.notional as Record<string, unknown> | undefined;
         const l = Number(
-          obj.longNotionalUsd ?? obj.longUsd ?? obj.longPosVal ?? obj.buyVolUsd
+          notionalObj?.longNotionalUsdt ??
+            obj.longNotionalUsd ??
+            obj.longUsd ??
+            obj.longPosVal ??
+            obj.buyVolUsd
         );
         const s = Number(
-          obj.shortNotionalUsd ?? obj.shortUsd ?? obj.shortPosVal ?? obj.sellVolUsd
+          notionalObj?.shortNotionalUsdt ??
+            obj.shortNotionalUsd ??
+            obj.shortUsd ??
+            obj.shortPosVal ??
+            obj.sellVolUsd
         );
         if (Number.isFinite(l) && Number.isFinite(s) && (l > 0 || s > 0)) {
           return {
