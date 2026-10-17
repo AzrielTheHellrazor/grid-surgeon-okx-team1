@@ -71,6 +71,12 @@ function GridCandleChart({
   slPx,
   lastPx,
   bar = '1m',
+  entryFillPx,
+  activeOrderPx,
+  tranche2OrderPx,
+  activeBuyOrderPx,
+  pingPongPhase,
+  avaxInventory,
 }: {
   candles: CandleBar[];
   gridLevels: number[];
@@ -80,64 +86,236 @@ function GridCandleChart({
   slPx: number;
   lastPx: number;
   bar?: string;
+  entryFillPx?: number;
+  activeOrderPx?: number;
+  tranche2OrderPx?: number;
+  activeBuyOrderPx?: number;
+  pingPongPhase?: 'SEEKING_ENTRY' | 'HARVESTING_EXIT' | 'IDLE';
+  avaxInventory?: number;
 }) {
   const bars = candles.slice(-36);
   if (bars.length === 0) return null;
 
-  const candleHigh = Math.max(...bars.map((b) => b.high));
-  const candleLow = Math.min(...bars.map((b) => b.low));
-  const rawMax = Math.max(candleHigh, maxPx, tpPx);
-  const rawMin = Math.min(candleLow, minPx, slPx);
+  const extraOrderPrices = [
+    entryFillPx,
+    activeOrderPx,
+    tranche2OrderPx,
+    activeBuyOrderPx,
+  ].filter(
+    (p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0
+  );
+
+  const allPrices = [
+    ...bars.flatMap((b) => [b.high, b.low]),
+    minPx,
+    maxPx,
+    tpPx,
+    slPx,
+    lastPx,
+    ...extraOrderPrices,
+  ].filter((p) => Number.isFinite(p) && p > 0);
+
+  const rawMax = Math.max(...allPrices);
+  const rawMin = Math.min(...allPrices);
   const rawSpan = Math.max(0.0001, rawMax - rawMin);
   const chartMax = rawMax + rawSpan * 0.08;
   const chartMin = rawMin - rawSpan * 0.08;
   const span = Math.max(0.0001, chartMax - chartMin);
 
-  const width = 560;
-  const height = 136;
-  const toY = (px: number) =>
+  const W = 560;
+  const H = 148;
+  const padTop = 6;
+  const padBottom = 6;
+  const plotRight = W - 98;
+
+  const yScale = (px: number) =>
     Math.min(
-      height - 4,
-      Math.max(4, height - ((px - chartMin) / span) * (height - 8) - 4)
+      H - padBottom,
+      Math.max(
+        padTop,
+        H - padBottom - ((px - chartMin) / span) * (H - padTop - padBottom)
+      )
     );
 
-  const barStep = width / bars.length;
+  const barStep = plotRight / bars.length;
   const bodyWidth = Math.max(3, barStep * 0.56);
+
+  const showVwap =
+    Boolean(entryFillPx && entryFillPx > 0) && (avaxInventory || 0) >= 0.05;
+  const showActiveOrder = Boolean(activeOrderPx && activeOrderPx > 0);
+  const showTranche2 = Boolean(tranche2OrderPx && tranche2OrderPx > 0);
+
+  // Build right-edge pill badges and run 1D Label Collision Solver
+  const rawBadges: Array<{
+    id: string;
+    px: number;
+    text: string;
+    stroke: string;
+    fill: string;
+    textColor: string;
+  }> = [
+    {
+      id: 'TP',
+      px: tpPx,
+      text: `TP $${tpPx.toFixed(3)}`,
+      stroke: 'rgba(52,211,153,0.55)',
+      fill: 'rgba(6,78,59,0.75)',
+      textColor: '#6ee7b7',
+    },
+    ...(showTranche2 && tranche2OrderPx
+      ? [
+          {
+            id: 'T2_SELL',
+            px: tranche2OrderPx,
+            text: `T2 SELL $${tranche2OrderPx.toFixed(3)}`,
+            stroke: '#34d399',
+            fill: 'rgba(6,95,70,0.85)',
+            textColor: '#a7f3d0',
+          },
+        ]
+      : []),
+    ...(showActiveOrder && activeOrderPx
+      ? [
+          {
+            id: 'T1_ORDER',
+            px: activeOrderPx,
+            text: `${
+              pingPongPhase === 'HARVESTING_EXIT' ? 'T1 SELL' : 'BUY'
+            } $${activeOrderPx.toFixed(3)}`,
+            stroke:
+              pingPongPhase === 'HARVESTING_EXIT' ? '#10b981' : '#06b6d4',
+            fill:
+              pingPongPhase === 'HARVESTING_EXIT'
+                ? 'rgba(16,185,129,0.22)'
+                : 'rgba(6,182,212,0.22)',
+            textColor:
+              pingPongPhase === 'HARVESTING_EXIT' ? '#6ee7b7' : '#67e8f9',
+          },
+        ]
+      : []),
+    ...(showVwap && entryFillPx
+      ? [
+          {
+            id: 'VWAP',
+            px: entryFillPx,
+            text: `VWAP $${entryFillPx.toFixed(3)}`,
+            stroke: '#fbbf24',
+            fill: 'rgba(120,53,15,0.82)',
+            textColor: '#fde68a',
+          },
+        ]
+      : []),
+    {
+      id: 'LAST',
+      px: lastPx,
+      text: `LAST $${lastPx.toFixed(3)}`,
+      stroke: 'rgba(255,255,255,0.65)',
+      fill: 'rgba(39,39,42,0.92)',
+      textColor: '#ffffff',
+    },
+    {
+      id: 'SL',
+      px: slPx,
+      text: `SL $${slPx.toFixed(3)}`,
+      stroke: 'rgba(251,113,133,0.55)',
+      fill: 'rgba(136,19,55,0.75)',
+      textColor: '#fda4af',
+    },
+  ];
+
+  const minYGap = 13;
+  const minBound = padTop + 8;
+  const maxBound = H - padBottom - 8;
+  const solvedBadges = rawBadges
+    .map((b) => {
+      const rawY = yScale(b.px);
+      return {
+        ...b,
+        rawY,
+        y: Math.min(maxBound, Math.max(minBound, rawY)),
+      };
+    })
+    .sort((a, b) => a.rawY - b.rawY);
+
+  for (let i = 1; i < solvedBadges.length; i++) {
+    if (solvedBadges[i].y < solvedBadges[i - 1].y + minYGap) {
+      solvedBadges[i].y = solvedBadges[i - 1].y + minYGap;
+    }
+  }
+  if (solvedBadges.length > 0) {
+    solvedBadges[solvedBadges.length - 1].y = Math.min(
+      maxBound,
+      solvedBadges[solvedBadges.length - 1].y
+    );
+    for (let i = solvedBadges.length - 2; i >= 0; i--) {
+      if (solvedBadges[i].y > solvedBadges[i + 1].y - minYGap) {
+        solvedBadges[i].y = Math.max(
+          minBound,
+          solvedBadges[i + 1].y - minYGap
+        );
+      }
+    }
+  }
 
   return (
     <div className="glass-well rounded-xl p-2.5 relative overflow-hidden">
-      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1 px-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-zinc-400 mb-1 px-1">
         <span>
           {bar} CANDLES ({bars.length}) + 12 GRID LEVELS
         </span>
-        <span className="text-zinc-300">
-          Range: ${formatPrice(minPx)} – ${formatPrice(maxPx)}
-        </span>
+        <div className="flex items-center gap-2">
+          {tranche2OrderPx && tranche2OrderPx > 0 && activeOrderPx ? (
+            <span className="text-emerald-300 font-semibold">
+              T1 ${activeOrderPx.toFixed(3)} / T2 ${tranche2OrderPx.toFixed(3)}
+            </span>
+          ) : null}
+          <span className="text-zinc-300">
+            Range: ${formatPrice(minPx)} – ${formatPrice(maxPx)}
+          </span>
+        </div>
       </div>
       <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-[136px] overflow-visible"
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-[148px] overflow-visible"
         preserveAspectRatio="none"
       >
         {/* Grid Corridor Shaded Band */}
         <rect
           x={0}
-          y={toY(maxPx)}
-          width={width}
-          height={Math.max(2, toY(minPx) - toY(maxPx))}
+          y={yScale(maxPx)}
+          width={plotRight}
+          height={Math.max(2, yScale(minPx) - yScale(maxPx))}
           fill="rgba(255,255,255,0.025)"
         />
 
+        {/* Translucent Target Proximity Band */}
+        {activeOrderPx && activeOrderPx > 0 && lastPx > 0 && (
+          <rect
+            x={0}
+            y={Math.min(yScale(lastPx), yScale(activeOrderPx))}
+            width={plotRight}
+            height={Math.max(
+              1.5,
+              Math.abs(yScale(activeOrderPx) - yScale(lastPx))
+            )}
+            fill={
+              pingPongPhase === 'HARVESTING_EXIT'
+                ? 'rgba(16,185,129,0.06)'
+                : 'rgba(6,182,212,0.06)'
+            }
+          />
+        )}
+
         {/* 12 Horizontal Grid Lines */}
         {gridLevels.map((lvl, idx) => {
-          const y = toY(lvl);
+          const y = yScale(lvl);
           const isBoundary = idx === 0 || idx === gridLevels.length - 1;
           return (
             <line
               key={idx}
               x1={0}
               y1={y}
-              x2={width}
+              x2={plotRight}
               y2={y}
               stroke={
                 isBoundary
@@ -153,36 +331,36 @@ function GridCandleChart({
         {/* TP & SL Trigger Lines */}
         <line
           x1={0}
-          y1={toY(tpPx)}
-          x2={width}
-          y2={toY(tpPx)}
+          y1={yScale(tpPx)}
+          x2={plotRight}
+          y2={yScale(tpPx)}
           stroke="rgba(52,211,153,0.45)"
           strokeWidth={0.8}
           strokeDasharray="4 4"
         />
         <line
           x1={0}
-          y1={toY(slPx)}
-          x2={width}
-          y2={toY(slPx)}
+          y1={yScale(slPx)}
+          x2={plotRight}
+          y2={yScale(slPx)}
           stroke="rgba(251,113,133,0.45)"
           strokeWidth={0.8}
           strokeDasharray="4 4"
         />
 
-        {/* 1H Candlesticks */}
-        {bars.map((bar, i) => {
+        {/* Candlesticks */}
+        {bars.map((barItem, i) => {
           const cx = i * barStep + barStep / 2;
-          const isBull = bar.close >= bar.open;
+          const isBull = barItem.close >= barItem.open;
           const color = isBull ? '#34d399' : '#fb7185';
-          const highY = toY(bar.high);
-          const lowY = toY(bar.low);
-          const topY = toY(Math.max(bar.open, bar.close));
-          const botY = toY(Math.min(bar.open, bar.close));
+          const highY = yScale(barItem.high);
+          const lowY = yScale(barItem.low);
+          const topY = yScale(Math.max(barItem.open, barItem.close));
+          const botY = yScale(Math.min(barItem.open, barItem.close));
           const bodyH = Math.max(1.5, botY - topY);
 
           return (
-            <g key={bar.ts}>
+            <g key={barItem.ts}>
               <line
                 x1={cx}
                 y1={highY}
@@ -204,16 +382,88 @@ function GridCandleChart({
           );
         })}
 
+        {/* Amber Dashed VWAP Cost Basis Line (#fbbf24) */}
+        {showVwap && entryFillPx && (
+          <line
+            x1={0}
+            y1={yScale(entryFillPx)}
+            x2={plotRight}
+            y2={yScale(entryFillPx)}
+            stroke="#fbbf24"
+            strokeDasharray="4 2"
+            strokeWidth="1.2"
+          />
+        )}
+
+        {/* Primary Active Order Line (activeOrderPx) */}
+        {showActiveOrder && activeOrderPx && (
+          <line
+            x1={0}
+            y1={yScale(activeOrderPx)}
+            x2={plotRight}
+            y2={yScale(activeOrderPx)}
+            stroke={pingPongPhase === 'HARVESTING_EXIT' ? '#10b981' : '#06b6d4'}
+            strokeWidth="1.4"
+          />
+        )}
+
+        {/* Tranche 2 Runner Line (tranche2OrderPx) */}
+        {showTranche2 && tranche2OrderPx && (
+          <line
+            x1={0}
+            y1={yScale(tranche2OrderPx)}
+            x2={plotRight}
+            y2={yScale(tranche2OrderPx)}
+            stroke="#34d399"
+            strokeDasharray="2 2"
+            strokeWidth="1"
+          />
+        )}
+
         {/* Live Price Highlight Line */}
         <line
           x1={0}
-          y1={toY(lastPx)}
-          x2={width}
-          y2={toY(lastPx)}
+          y1={yScale(lastPx)}
+          x2={plotRight}
+          y2={yScale(lastPx)}
           stroke="#ffffff"
           strokeWidth={1}
           strokeDasharray="2 2"
         />
+
+        {/* Collision-Solved Right-Edge Pill Badges */}
+        {solvedBadges.map((b) => (
+          <g key={b.id}>
+            <line
+              x1={plotRight}
+              y1={b.rawY}
+              x2={plotRight + 5}
+              y2={b.y}
+              stroke={b.stroke}
+              strokeWidth={0.8}
+            />
+            <rect
+              x={plotRight + 5}
+              y={b.y - 5.5}
+              width={W - plotRight - 7}
+              height={11}
+              rx={2.5}
+              fill={b.fill}
+              stroke={b.stroke}
+              strokeWidth={0.7}
+            />
+            <text
+              x={plotRight + 9}
+              y={b.y + 2.5}
+              fill={b.textColor}
+              fontSize="7.2"
+              fontFamily="monospace"
+              fontWeight="600"
+            >
+              {b.text}
+            </text>
+          </g>
+        ))}
       </svg>
     </div>
   );
@@ -758,13 +1008,20 @@ export function App() {
                 <Activity className="size-4 text-emerald-400" />
                 Grid Bot Corridor ({b1.instId})
               </CardTitle>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline">#{gridBot.algoId}</Badge>
                 <Badge variant="emerald">
                   {gridBot.pingPongPhase === 'HARVESTING_EXIT'
                     ? 'EXIT SELL'
                     : 'ENTRY BUY'}{' '}
                   • {gridBot.status}
+                  {gridBot?.tranche2OrderPx
+                    ? ` • T1 $${gridBot.activeOrderPx?.toFixed(3)} / T2 $${gridBot.tranche2OrderPx.toFixed(3)}`
+                    : ''}
+                </Badge>
+                <Badge variant="amber">
+                  RT: {gridBot?.roundTripsCompleted ?? 0} • VWAP $
+                  {(gridBot?.entryFillPx || b1.market.lastPx).toFixed(3)}
                 </Badge>
                 <button
                   type="button"
@@ -810,8 +1067,10 @@ export function App() {
                         : 'text-rose-400',
                   },
                   {
-                    k: 'Order Px',
-                    v: `$${formatPrice(gridBot.activeOrderPx || b2.gridPlan.optimalBuyPx || gridBot.minPx)}`,
+                    k: gridBot?.tranche2OrderPx ? 'T1 / T2 Px' : 'Order Px',
+                    v: gridBot?.tranche2OrderPx
+                      ? `T1 $${gridBot.activeOrderPx?.toFixed(3)} / T2 $${gridBot.tranche2OrderPx.toFixed(3)}`
+                      : `$${formatPrice(gridBot.activeOrderPx || b2.gridPlan.optimalBuyPx || gridBot.minPx)}`,
                     c: 'text-emerald-300',
                   },
                 ].map((m) => (
@@ -824,7 +1083,7 @@ export function App() {
                     </span>
                     <span
                       className={cn(
-                        'text-xs font-mono font-semibold text-zinc-100 mt-0.5',
+                        'text-xs font-mono font-semibold text-zinc-100 mt-0.5 truncate',
                         m.c
                       )}
                     >
@@ -844,6 +1103,12 @@ export function App() {
                 slPx={gridBot.slTriggerPx}
                 lastPx={b1.market.lastPx}
                 bar={b1.bar || state.selectedBar || '1m'}
+                entryFillPx={gridBot?.entryFillPx}
+                activeOrderPx={gridBot?.activeOrderPx}
+                tranche2OrderPx={gridBot?.tranche2OrderPx}
+                activeBuyOrderPx={gridBot?.activeBuyOrderPx}
+                pingPongPhase={gridBot?.pingPongPhase}
+                avaxInventory={gridBot?.avaxInventory}
               />
 
               {/* Corridor Range Gauge */}
@@ -1022,6 +1287,7 @@ export function App() {
                   { id: 'okx-sentiment-tracker', label: 'News' },
                   { id: 'okx-cex-smartmoney', label: 'Whale' },
                   { id: 'okx-cex-bot', label: 'Bot' },
+                  { id: 'okx-cex-trade', label: 'Spot/Fills' },
                   { id: 'okx-cex-earn', label: 'Earn' },
                 ].map((f) => (
                   <button

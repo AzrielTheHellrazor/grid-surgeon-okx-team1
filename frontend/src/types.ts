@@ -148,6 +148,9 @@ export interface GridCorridorPlan {
   reservationPx?: number;
   optimalBuyPx?: number;
   optimalSellPx?: number;
+  optimalSellTranche1Px?: number;
+  optimalSellTranche2Px?: number;
+  toxicFlowGuard?: boolean;
   alphaFlow?: number;
 }
 
@@ -176,6 +179,9 @@ export interface Phase2BrainOutput {
     reservationPx?: number;
     optimalBuyPx?: number;
     optimalSellPx?: number;
+    optimalSellTranche1Px?: number;
+    optimalSellTranche2Px?: number;
+    toxicFlowGuard?: boolean;
   };
   gridPlan: GridCorridorPlan;
   recommendedAction:
@@ -218,9 +224,12 @@ export interface ActiveGridBotState {
   lastAmendedAt: string;
   pingPongPhase?: 'SEEKING_ENTRY' | 'HARVESTING_EXIT' | 'IDLE';
   activeOrderPx?: number;
+  tranche2OrderPx?: number;
+  activeBuyOrderPx?: number;
   entryFillPx?: number;
   avaxInventory?: number;
   roundTripsCompleted?: number;
+  lastFillTs?: number;
 }
 
 export interface GridSurgeryEvent {

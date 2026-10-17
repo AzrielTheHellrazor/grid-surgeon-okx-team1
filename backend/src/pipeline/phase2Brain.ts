@@ -63,6 +63,10 @@ export function runPhase2Brain(
   );
   const gammaEff = 0.25 * clamp(vr, 0.75, 1.50);
   const reservationPx = Number((microPx + alphaFlow * 0.35 * atr - gammaEff * invRatio * atr).toFixed(4));
+  const microSkew = (microPx - lastPx) / atr;
+  const latestHigh = sense.candles.length > 0 ? sense.candles[sense.candles.length - 1].high : lastPx;
+  const intrabarDrop = (lastPx - latestHigh) / atr;
+  const toxicFlowGuard = (obi < -0.35 && microSkew < -0.15) || intrabarDrop < -1.15;
 
   // 2. Evaluate Grid Corridor & Drift Surgery Trigger
   const gridNum = 12;
@@ -89,10 +93,11 @@ export function runPhase2Brain(
 
   // Fee-Protected Optimal Inner-Rung Maker Buy & Sell Prices (2x Maker Fee = 0.16% + Net Alpha Spread)
   const minProfitStep = Math.max(gridStepUsdt, lastPx * 0.0022 * clamp(vr, 0.85, 1.35));
-  let rawBuyPx =
-    alphaFlow < -0.35 || trapClassification === 'BULL_TRAP'
-      ? reservationPx - 1.5 * minProfitStep
-      : Math.min(sense.market.bidPx, reservationPx - 0.35 * gridStepUsdt);
+  let rawBuyPx = toxicFlowGuard
+    ? Math.min(sense.market.bidPx, reservationPx - 1.8 * atr)
+    : alphaFlow < -0.35 || trapClassification === 'BULL_TRAP'
+    ? reservationPx - 1.5 * minProfitStep
+    : Math.min(sense.market.bidPx, reservationPx - 0.35 * gridStepUsdt);
   if (
     currentGridBot?.avaxInventory &&
     currentGridBot.avaxInventory >= 0.1 &&
@@ -103,17 +108,15 @@ export function runPhase2Brain(
   }
   const safeBidCap = Math.max(targetMinPx, sense.market.bidPx || lastPx);
   const optimalBuyPx = Number(clamp(rawBuyPx, targetMinPx, safeBidCap).toFixed(3));
-  const baseEntryPx =
-    currentGridBot?.entryFillPx && currentGridBot.entryFillPx > 0
-      ? currentGridBot.entryFillPx
-      : optimalBuyPx;
-  const rawSellPx = Math.max(sense.market.askPx, reservationPx + 0.65 * minProfitStep, (currentGridBot?.entryFillPx || lastPx) * 1.0022);
-  const optimalSellPx = Number(
-    Math.max(
-      rawSellPx,
-      baseEntryPx + minProfitStep * (1 + 0.3 * Math.max(0, alphaFlow))
-    ).toFixed(3)
-  );
+  const holdMinutes = currentGridBot?.lastFillTs ? Math.max(0, (Date.now() - currentGridBot.lastFillTs) / 60000) : 0;
+  const tauDecay = clamp((holdMinutes - 10) / 15, 0, 1);
+  const tranche1Bps = Math.max(18, Math.round(24 - 6 * clamp(invRatio, 0, 1) - 4 * tauDecay));
+  const tranche2Bps = Math.max(20, Math.round(38 + 10 * Math.max(0, alphaFlow) - 8 * clamp(invRatio, 0, 1) - 14 * tauDecay));
+  const vwapAnchorPx = currentGridBot?.entryFillPx || lastPx;
+  const sellUpperCapPx = Math.max(targetMaxPx, vwapAnchorPx * 1.006);
+  const optimalSellTranche1Px = Number(clamp(Math.max(sense.market.askPx, reservationPx + 0.45 * minProfitStep, vwapAnchorPx * (1 + tranche1Bps / 10000)), sense.market.askPx, sellUpperCapPx).toFixed(4));
+  const optimalSellTranche2Px = Number(clamp(Math.max(optimalSellTranche1Px + 0.008, vwapAnchorPx * (1 + tranche2Bps / 10000)), optimalSellTranche1Px + 0.004, sellUpperCapPx).toFixed(4));
+  const optimalSellPx = optimalSellTranche1Px;
 
   const gridLevels: number[] = [];
   for (let i = 0; i <= gridNum; i++) {
@@ -270,6 +273,9 @@ export function runPhase2Brain(
       reservationPx,
       optimalBuyPx,
       optimalSellPx,
+      optimalSellTranche1Px,
+      optimalSellTranche2Px,
+      toxicFlowGuard,
     },
     gridPlan: {
       minPx: targetMinPx,
@@ -288,6 +294,9 @@ export function runPhase2Brain(
       reservationPx,
       optimalBuyPx,
       optimalSellPx,
+      optimalSellTranche1Px,
+      optimalSellTranche2Px,
+      toxicFlowGuard,
       alphaFlow,
     },
     recommendedAction,

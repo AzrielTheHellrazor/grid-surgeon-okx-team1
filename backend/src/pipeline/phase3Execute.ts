@@ -214,11 +214,17 @@ export async function runPhase3Execute(
   const liveSpotOrders = Array.isArray(spotOrdersRes.data)
     ? spotOrdersRes.data
     : [];
-  let firstLiveSpot = liveSpotOrders.length > 0 ? liveSpotOrders[0] : null;
-  let liveBuySpot =
-    liveSpotOrders.find((o) => (o.side || '').toLowerCase() === 'buy') || null;
-  let liveSellSpot =
-    liveSpotOrders.find((o) => (o.side || '').toLowerCase() === 'sell') || null;
+  const liveSellOrders = liveSpotOrders
+    .filter((o) => (o.side || '').toLowerCase() === 'sell')
+    .sort((a, b) => Number(a.px || 0) - Number(b.px || 0));
+  const liveBuyOrders = liveSpotOrders
+    .filter((o) => (o.side || '').toLowerCase() === 'buy')
+    .sort((a, b) => Number(b.px || 0) - Number(a.px || 0));
+  let liveSellSpot: Record<string, string> | null = liveSellOrders[0] || null; // Tranche 1 — closest to market
+  let liveSellRunner: Record<string, string> | null = liveSellOrders[1] || null; // Tranche 2 — upper runner
+  let liveBuySpot: Record<string, string> | null = liveBuyOrders[0] || null;
+  let firstLiveSpot: Record<string, string> | null =
+    liveSellSpot || liveBuySpot || liveSpotOrders[0] || null;
   const gridRealizedPnl = Number(firstLiveGrid?.gridProfit || 0);
 
   const totalNav =
@@ -308,7 +314,10 @@ export async function runPhase3Execute(
       ? Number((accumCostUsdt / accumBuySz).toFixed(spotSizing.pxDec + 1))
       : fallbackAnchorPx;
 
-  let spotRealizedPnl = 0;
+  // True Matched Round-Trip Realized PnL: strictly over completed sell fills (completedSellCount > 0)
+  let totalSellProceedsUsdt = 0;
+  let totalSoldAvax = 0;
+  let totalSellFeeUsdt = 0;
   let completedSellCount = 0;
   for (const fill of spotFills) {
     const fSide = (fill.side || '').toLowerCase();
@@ -318,12 +327,58 @@ export async function runPhase3Execute(
     const feeUsdt =
       (fill.feeCcy || '').toUpperCase() === 'USDT' ? fFee : fFee * fPx;
     if (fSide === 'sell' && fPx > 0 && fSz > 0) {
-      spotRealizedPnl += (fPx - vwapCostBasisPx) * fSz - feeUsdt;
+      totalSellProceedsUsdt += fPx * fSz;
+      totalSoldAvax += fSz;
+      totalSellFeeUsdt += feeUsdt;
       completedSellCount += 1;
-    } else if (fSide === 'buy' && fPx > 0 && fSz > 0) {
-      spotRealizedPnl -= feeUsdt;
     }
   }
+
+  let spotRealizedPnl = 0;
+  if (completedSellCount > 0 && totalSoldAvax > 0) {
+    let remainingToMatchAvax = totalSoldAvax;
+    let matchedBuyCostUsdt = 0;
+    let matchedBuyFeeUsdt = 0;
+    const chronologicalBuyFills = [...spotFills]
+      .filter((f) => (f.side || '').toLowerCase() === 'buy')
+      .reverse();
+
+    for (const bFill of chronologicalBuyFills) {
+      if (remainingToMatchAvax <= 1e-8) break;
+      const bPx = Number(bFill.fillPx || bFill.px || 0);
+      const bSz = Number(bFill.fillSz || bFill.sz || 0);
+      if (!Number.isFinite(bPx) || bPx <= 0 || !Number.isFinite(bSz) || bSz <= 0) {
+        continue;
+      }
+      const matchSz = Math.min(bSz, remainingToMatchAvax);
+      const bFee = Math.abs(Number(bFill.fee || 0));
+      const fullBuyFeeUsdt =
+        bFee > 0
+          ? (bFill.feeCcy || '').toUpperCase() === 'USDT'
+            ? bFee
+            : bFee * bPx
+          : bPx * bSz * 0.0008;
+      matchedBuyCostUsdt += matchSz * bPx;
+      matchedBuyFeeUsdt += fullBuyFeeUsdt * (matchSz / bSz);
+      remainingToMatchAvax -= matchSz;
+    }
+
+    if (remainingToMatchAvax > 1e-8) {
+      const fallbackCost = remainingToMatchAvax * vwapCostBasisPx;
+      matchedBuyCostUsdt += fallbackCost;
+      matchedBuyFeeUsdt += fallbackCost * 0.0008;
+    }
+
+    spotRealizedPnl = Number(
+      (
+        totalSellProceedsUsdt -
+        matchedBuyCostUsdt -
+        totalSellFeeUsdt -
+        matchedBuyFeeUsdt
+      ).toFixed(4)
+    );
+  }
+
   const spotMarkPx =
     sense.market.bidPx > 0 && sense.market.askPx > 0
       ? (sense.market.bidPx + sense.market.askPx) / 2
@@ -341,12 +396,46 @@ export async function runPhase3Execute(
     ).toFixed(2)
   );
 
+  // +18 bps fee-protected floor (16 bps round-trip maker fee + 2 bps net alpha)
   const minProfitSellPx = Number(
-    Math.max(sense.market.askPx, vwapCostBasisPx * 1.0022).toFixed(spotSizing.pxDec)
+    Math.max(sense.market.askPx, vwapCostBasisPx * 1.0018).toFixed(spotSizing.pxDec)
   );
-  const effectiveOptimalSellPx = Math.max(optimalSellPx, minProfitSellPx);
+  const tranche1TargetPx = Number(
+    Math.max(
+      plan.optimalSellTranche1Px ||
+        brain.formulas.optimalSellTranche1Px ||
+        optimalSellPx,
+      minProfitSellPx
+    ).toFixed(spotSizing.pxDec)
+  );
+  const tranche2TargetPx = Number(
+    Math.max(
+      plan.optimalSellTranche2Px ||
+        brain.formulas.optimalSellTranche2Px ||
+        Number((vwapCostBasisPx * 1.0036).toFixed(spotSizing.pxDec)),
+      Number((tranche1TargetPx + 0.008).toFixed(spotSizing.pxDec))
+    ).toFixed(spotSizing.pxDec)
+  );
+  const effectiveOptimalSellPx = tranche1TargetPx;
 
-  // 1m Step-Down Buy Ladder, Cooldown & Regime Gate (P0.3 & P0.4)
+  const tranche1Sz = Number(
+    (Math.floor((totalSellableAvax / 2) * 100) / 100).toFixed(2)
+  );
+  const tranche2Sz = Number((totalSellableAvax - tranche1Sz).toFixed(2));
+
+  // 1m Step-Down Buy Ladder, Cooldown, Toxic Flow Guard & Regime Gate
+  const toxicFlowGuardActive = Boolean(
+    plan.toxicFlowGuard || brain.formulas.toxicFlowGuard
+  );
+  const toxicDefensiveBuyPx = Number(
+    (
+      (plan.reservationPx || brain.formulas.reservationPx || lastPx) -
+      1.8 * brain.formulas.atr14
+    ).toFixed(spotSizing.pxDec)
+  );
+  const baseOptimalBuyPx = toxicFlowGuardActive
+    ? Math.min(optimalBuyPx, toxicDefensiveBuyPx)
+    : optimalBuyPx;
   const allowSpotBuyEntry =
     state.autoPilotEnabled &&
     brain.regime !== 'BULL_TRAP_SHORT' &&
@@ -355,18 +444,23 @@ export async function runPhase3Execute(
   const effectiveOptimalBuyPx =
     avaxInventory >= spotSizing.minSellSz && lastBuyFillPx > 0
       ? Math.min(
-          optimalBuyPx,
+          baseOptimalBuyPx,
           Number(
             (lastBuyFillPx - Math.max(plan.gridStepUsdt, 0.008)).toFixed(
               spotSizing.pxDec
             )
           )
         )
-      : optimalBuyPx;
+      : baseOptimalBuyPx;
   const buyCooldownElapsed =
     lastBuyFillTs <= 0 || Date.now() - lastBuyFillTs >= 20000;
 
-  // 6. Autonomous Dual-Sided Ping-Pong Maker State Machine (Simultaneous Bid & Ask Straddle)
+  let latestSurgery: GridSurgeryEvent | null = null;
+  const prevMinPx = state.activeGridBot?.minPx || plan.minPx;
+  const prevMaxPx = state.activeGridBot?.maxPx || plan.maxPx;
+  let step6AmendedOrder = false;
+
+  // 6. Autonomous Dual-Sided Ping-Pong Maker State Machine (2-Tranche Split-Harvest & FIFO-Preserving Order Management)
   if (!onChainGov.circuitBreakerActive && !firstLiveGrid) {
     // Regime Gate: Cancel liveBuySpot if regime is BULL_TRAP_SHORT or MACRO_BUNKER
     if (
@@ -388,81 +482,319 @@ export async function runPhase3Execute(
       });
       cliRecords.push(cancelToxicBuyRes.record);
       if (cancelToxicBuyRes.success) {
-        if (firstLiveSpot?.ordId === liveBuySpot.ordId) {
-          firstLiveSpot = liveSellSpot || null;
-        }
         liveBuySpot = null;
       }
     }
 
-    // P0.2 Idle Inventory Consolidation: If an undersized sell order exists while free inventory >= minSellSz, cancel to consolidate
-    let consolidatedFromCancel = false;
-    if (liveSellSpot?.ordId && avaxFree >= spotSizing.minSellSz) {
-      const cancelUndersizedRes = await runOkxCli({
-        args: [
-          'spot',
-          'cancel',
-          sense.spotInstId,
-          '--ordId',
-          liveSellSpot.ordId,
-          '--json',
-        ],
+    // Toxic Flow Guard: Immediate atomic okx spot amend of liveBuySpot down to effectiveOptimalBuyPx (reservationPx - 1.8 * atr)
+    if (
+      toxicFlowGuardActive &&
+      liveBuySpot?.ordId &&
+      Number(liveBuySpot.px || 0) > effectiveOptimalBuyPx + 0.0005
+    ) {
+      const prevBuyPx = Number(liveBuySpot.px || 0);
+      const newBuyPxStr = effectiveOptimalBuyPx.toFixed(spotSizing.pxDec);
+      const toxicAmendArgs = [
+        'spot',
+        'amend',
+        '--instId',
+        sense.spotInstId,
+        '--ordId',
+        liveBuySpot.ordId,
+        '--newPx',
+        newBuyPxStr,
+        '--json',
+      ];
+      const toxicAmendRes = await runOkxCli({
+        args: toxicAmendArgs,
         phase: 'BORDER_3_EXECUTE',
         skill: 'okx-cex-trade',
       });
-      cliRecords.push(cancelUndersizedRes.record);
-      if (cancelUndersizedRes.success) {
-        if (firstLiveSpot?.ordId === liveSellSpot.ordId) {
-          firstLiveSpot = liveBuySpot || null;
-        }
-        liveSellSpot = null;
-        consolidatedFromCancel = true;
+      cliRecords.push(toxicAmendRes.record);
+      if (toxicAmendRes.success) {
+        liveBuySpot.px = newBuyPxStr;
+        step6AmendedOrder = true;
+        latestSurgery = {
+          id: `surg-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          algoId: liveBuySpot.ordId,
+          triggerPx: lastPx,
+          previousMinPx: prevBuyPx,
+          previousMaxPx: prevMaxPx,
+          newMinPx: Number(newBuyPxStr),
+          newMaxPx: plan.maxPx,
+          newTpTriggerPx: plan.tpTriggerPx,
+          newSlTriggerPx: plan.slTriggerPx,
+          corridorPctBefore: plan.corridorPositionPct,
+          atrAtSurgery: brain.formulas.atr14,
+          commandExecuted: `okx ${toxicAmendArgs.join(' ')}`,
+        };
+        state.surgeryHistory.unshift(latestSurgery);
       }
     }
 
-    // Leg B (Ask / Harvest Exit): If we have free coin inventory (or just released consolidated inventory) and no open sell order, place Limit SELL for full sellable inventory
+    // 2-Tranche Split-Harvest & FIFO-Preserving Sell Order Management
     if (
-      !liveSellSpot &&
-      (avaxFree >= spotSizing.minSellSz || consolidatedFromCancel)
+      liveSellOrders.length === 1 &&
+      liveSellSpot?.ordId &&
+      Number(liveSellSpot.sz || 0) >= 0.40 &&
+      totalSellableAvax >= 0.40
     ) {
-      const sellPxStr = effectiveOptimalSellPx.toFixed(spotSizing.pxDec);
-      const sellCreateRes = await runOkxCli<Array<Record<string, string>>>({
-        args: [
-          'spot',
-          'place',
-          '--instId',
-          sense.spotInstId,
-          '--tdMode',
-          'cash',
-          '--side',
-          'sell',
-          '--ordType',
-          'limit',
-          '--sz',
-          spotSizing.sellSz,
-          '--px',
-          sellPxStr,
-          '--json',
-        ],
+      // Case A: Single Oversized Sell Order Open -> Atomic in-flight amend to shrink to Tranche 1, then place Tranche 2
+      const prevSellPx = Number(liveSellSpot.px || 0);
+      const t1PxStr = tranche1TargetPx.toFixed(spotSizing.pxDec);
+      const t1SzStr = String(tranche1Sz);
+      const shrinkAmendArgs = [
+        'spot',
+        'amend',
+        '--instId',
+        sense.spotInstId,
+        '--ordId',
+        liveSellSpot.ordId,
+        '--newSz',
+        t1SzStr,
+        '--newPx',
+        t1PxStr,
+        '--json',
+      ];
+      const shrinkAmendRes = await runOkxCli({
+        args: shrinkAmendArgs,
         phase: 'BORDER_3_EXECUTE',
         skill: 'okx-cex-trade',
       });
-      cliRecords.push(sellCreateRes.record);
-      const newOrdId =
-        Array.isArray(sellCreateRes.data) && sellCreateRes.data[0]?.ordId
-          ? sellCreateRes.data[0].ordId
-          : null;
-      if (newOrdId) {
-        const createdSellSpot: Record<string, string> = {
-          ordId: newOrdId,
-          px: sellPxStr,
-          sz: spotSizing.sellSz,
-          side: 'sell',
-          cTime: String(Date.now()),
+      cliRecords.push(shrinkAmendRes.record);
+
+      if (shrinkAmendRes.success) {
+        liveSellSpot.sz = t1SzStr;
+        liveSellSpot.px = t1PxStr;
+        step6AmendedOrder = true;
+        latestSurgery = {
+          id: `surg-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          algoId: liveSellSpot.ordId,
+          triggerPx: lastPx,
+          previousMinPx: prevSellPx,
+          previousMaxPx: prevMaxPx,
+          newMinPx: Number(t1PxStr),
+          newMaxPx: tranche2TargetPx,
+          newTpTriggerPx: plan.tpTriggerPx,
+          newSlTriggerPx: plan.slTriggerPx,
+          corridorPctBefore: plan.corridorPositionPct,
+          atrAtSurgery: brain.formulas.atr14,
+          commandExecuted: `okx ${shrinkAmendArgs.join(' ')}`,
         };
-        liveSellSpot = createdSellSpot;
-        if (!firstLiveSpot) {
-          firstLiveSpot = createdSellSpot;
+        state.surgeryHistory.unshift(latestSurgery);
+
+        if (tranche2Sz >= spotSizing.minSellSz) {
+          const t2PxStr = tranche2TargetPx.toFixed(spotSizing.pxDec);
+          const t2SzStr = String(tranche2Sz);
+          const runnerCreateRes = await runOkxCli<Array<Record<string, string>>>({
+            args: [
+              'spot',
+              'place',
+              '--instId',
+              sense.spotInstId,
+              '--tdMode',
+              'cash',
+              '--side',
+              'sell',
+              '--ordType',
+              'limit',
+              '--sz',
+              t2SzStr,
+              '--px',
+              t2PxStr,
+              '--json',
+            ],
+            phase: 'BORDER_3_EXECUTE',
+            skill: 'okx-cex-trade',
+          });
+          cliRecords.push(runnerCreateRes.record);
+          const runnerOrdId =
+            Array.isArray(runnerCreateRes.data) && runnerCreateRes.data[0]?.ordId
+              ? runnerCreateRes.data[0].ordId
+              : null;
+          if (runnerOrdId) {
+            liveSellRunner = {
+              ordId: runnerOrdId,
+              px: t2PxStr,
+              sz: t2SzStr,
+              side: 'sell',
+              cTime: String(Date.now()),
+            };
+          }
+        }
+      }
+    } else if (
+      liveSellOrders.length === 1 &&
+      liveSellSpot?.ordId &&
+      avaxFree >= spotSizing.minSellSz
+    ) {
+      // Case B: Keep liveSellSpot (Tranche 1) untouched to preserve FIFO queue priority; place free inventory as Tranche 2 runner
+      const freeSellableSz = Number(
+        (Math.floor((avaxFree - 0.0005) * 100) / 100).toFixed(2)
+      );
+      if (freeSellableSz >= spotSizing.minSellSz) {
+        const t2PxStr = tranche2TargetPx.toFixed(spotSizing.pxDec);
+        const t2SzStr = String(freeSellableSz);
+        const runnerCreateRes = await runOkxCli<Array<Record<string, string>>>({
+          args: [
+            'spot',
+            'place',
+            '--instId',
+            sense.spotInstId,
+            '--tdMode',
+            'cash',
+            '--side',
+            'sell',
+            '--ordType',
+            'limit',
+            '--sz',
+            t2SzStr,
+            '--px',
+            t2PxStr,
+            '--json',
+          ],
+          phase: 'BORDER_3_EXECUTE',
+          skill: 'okx-cex-trade',
+        });
+        cliRecords.push(runnerCreateRes.record);
+        const runnerOrdId =
+          Array.isArray(runnerCreateRes.data) && runnerCreateRes.data[0]?.ordId
+            ? runnerCreateRes.data[0].ordId
+            : null;
+        if (runnerOrdId) {
+          liveSellRunner = {
+            ordId: runnerOrdId,
+            px: t2PxStr,
+            sz: t2SzStr,
+            side: 'sell',
+            cTime: String(Date.now()),
+          };
+        }
+      }
+    } else if (
+      liveSellOrders.length === 0 &&
+      avaxFree >= spotSizing.minSellSz
+    ) {
+      // Case C: No open sell orders and free coin inventory >= minSellSz
+      if (
+        sense.spotInstId === 'AVAX-USDT' &&
+        totalSellableAvax >= 0.40 &&
+        tranche1Sz >= spotSizing.minSellSz &&
+        tranche2Sz >= spotSizing.minSellSz
+      ) {
+        const t1PxStr = tranche1TargetPx.toFixed(spotSizing.pxDec);
+        const t1SzStr = String(tranche1Sz);
+        const t1CreateRes = await runOkxCli<Array<Record<string, string>>>({
+          args: [
+            'spot',
+            'place',
+            '--instId',
+            sense.spotInstId,
+            '--tdMode',
+            'cash',
+            '--side',
+            'sell',
+            '--ordType',
+            'limit',
+            '--sz',
+            t1SzStr,
+            '--px',
+            t1PxStr,
+            '--json',
+          ],
+          phase: 'BORDER_3_EXECUTE',
+          skill: 'okx-cex-trade',
+        });
+        cliRecords.push(t1CreateRes.record);
+        const t1OrdId =
+          Array.isArray(t1CreateRes.data) && t1CreateRes.data[0]?.ordId
+            ? t1CreateRes.data[0].ordId
+            : null;
+        if (t1OrdId) {
+          liveSellSpot = {
+            ordId: t1OrdId,
+            px: t1PxStr,
+            sz: t1SzStr,
+            side: 'sell',
+            cTime: String(Date.now()),
+          };
+        }
+
+        const t2PxStr = tranche2TargetPx.toFixed(spotSizing.pxDec);
+        const t2SzStr = String(tranche2Sz);
+        const t2CreateRes = await runOkxCli<Array<Record<string, string>>>({
+          args: [
+            'spot',
+            'place',
+            '--instId',
+            sense.spotInstId,
+            '--tdMode',
+            'cash',
+            '--side',
+            'sell',
+            '--ordType',
+            'limit',
+            '--sz',
+            t2SzStr,
+            '--px',
+            t2PxStr,
+            '--json',
+          ],
+          phase: 'BORDER_3_EXECUTE',
+          skill: 'okx-cex-trade',
+        });
+        cliRecords.push(t2CreateRes.record);
+        const t2OrdId =
+          Array.isArray(t2CreateRes.data) && t2CreateRes.data[0]?.ordId
+            ? t2CreateRes.data[0].ordId
+            : null;
+        if (t2OrdId) {
+          liveSellRunner = {
+            ordId: t2OrdId,
+            px: t2PxStr,
+            sz: t2SzStr,
+            side: 'sell',
+            cTime: String(Date.now()),
+          };
+        }
+      } else {
+        const sellPxStr = tranche1TargetPx.toFixed(spotSizing.pxDec);
+        const sellCreateRes = await runOkxCli<Array<Record<string, string>>>({
+          args: [
+            'spot',
+            'place',
+            '--instId',
+            sense.spotInstId,
+            '--tdMode',
+            'cash',
+            '--side',
+            'sell',
+            '--ordType',
+            'limit',
+            '--sz',
+            spotSizing.sellSz,
+            '--px',
+            sellPxStr,
+            '--json',
+          ],
+          phase: 'BORDER_3_EXECUTE',
+          skill: 'okx-cex-trade',
+        });
+        cliRecords.push(sellCreateRes.record);
+        const newOrdId =
+          Array.isArray(sellCreateRes.data) && sellCreateRes.data[0]?.ordId
+            ? sellCreateRes.data[0].ordId
+            : null;
+        if (newOrdId) {
+          liveSellSpot = {
+            ordId: newOrdId,
+            px: sellPxStr,
+            sz: spotSizing.sellSz,
+            side: 'sell',
+            cTime: String(Date.now()),
+          };
         }
       }
     }
@@ -503,24 +835,96 @@ export async function runPhase3Execute(
           ? buyCreateRes.data[0].ordId
           : null;
       if (newOrdId) {
-        const createdBuySpot: Record<string, string> = {
+        liveBuySpot = {
           ordId: newOrdId,
           px: buyPxStr,
           sz: spotSizing.buySz,
           side: 'buy',
           cTime: String(Date.now()),
         };
-        liveBuySpot = createdBuySpot;
-        firstLiveSpot = createdBuySpot;
       }
     }
   }
 
-  // 7. Parse REAL Active Grid Bot or Live Spot Grid Order
-  let latestSurgery: GridSurgeryEvent | null = null;
-  const latestProfitSweep: ProfitSweepEvent | null = null;
-  const prevMinPx = state.activeGridBot?.minPx || plan.minPx;
-  const prevMaxPx = state.activeGridBot?.maxPx || plan.maxPx;
+  // Ensure firstLiveSpot prioritizes liveSellSpot || liveBuySpot || liveSpotOrders[0]
+  firstLiveSpot = liveSellSpot || liveBuySpot || liveSpotOrders[0] || null;
+
+  // 7. Autonomous Simple Earn Profit Sweep & Parse REAL Active Grid Bot / Live Spot Grid Order
+  let latestProfitSweep: ProfitSweepEvent | null = null;
+  const scenario = sense.scenario;
+  if (
+    !onChainGov.circuitBreakerActive &&
+    scenario === 'LIVE' &&
+    completedSellCount > state.treasury.totalProfitSweptCount &&
+    spotRealizedPnl >= 0.02 &&
+    usdtFree >= 1.50
+  ) {
+    const transferRes = await runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'account',
+        'transfer',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--from',
+        '18',
+        '--to',
+        '6',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    });
+    cliRecords.push(transferRes.record);
+
+    const earnRes = await runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'earn',
+        'savings',
+        'purchase',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--rate',
+        '0.01',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-earn',
+    });
+    cliRecords.push(earnRes.record);
+
+    if (transferRes.success || earnRes.success) {
+      const transferId =
+        Array.isArray(transferRes.data) && transferRes.data[0]?.transId
+          ? transferRes.data[0].transId
+          : `tr-${Date.now()}`;
+      const earnOrdId =
+        Array.isArray(earnRes.data) && earnRes.data[0]?.ordId
+          ? earnRes.data[0].ordId
+          : `earn-${Date.now()}`;
+      state.treasury.totalProfitSweptCount += 1;
+      state.treasury.lockedSimpleEarnUsdt = Number(
+        (state.treasury.lockedSimpleEarnUsdt + 1).toFixed(2)
+      );
+      state.treasury.tradingAccountUsdt = Number(
+        Math.max(0, state.treasury.tradingAccountUsdt - 1).toFixed(2)
+      );
+      latestProfitSweep = {
+        id: `sweep-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        realizedProfitUsdt: Number(spotRealizedPnl.toFixed(4)),
+        sweptToEarnUsdt: 1.0,
+        transferId,
+        earnOrdId,
+        newLockedEarnTotalUsdt: state.treasury.lockedSimpleEarnUsdt,
+        newHighWaterMarkUsdt: state.treasury.highWaterMarkNavUsdt,
+      };
+      state.profitSweepHistory.unshift(latestProfitSweep);
+    }
+  }
 
   if (firstLiveGrid && firstLiveGrid.algoId) {
     state.activeGridBot = {
@@ -548,42 +952,56 @@ export async function runPhase3Execute(
       pingPongPhase: 'SEEKING_ENTRY',
       entryFillPx: vwapCostBasisPx,
       avaxInventory,
+      lastFillTs:
+        lastBuyFillTs > 0 ? lastBuyFillTs : state.activeGridBot?.lastFillTs,
     };
   } else if (firstLiveSpot && firstLiveSpot.ordId) {
-    const spotPx = Number(firstLiveSpot.px || effectiveOptimalBuyPx);
-    const spotSz = Number(firstLiveSpot.sz || 0.1);
+    const activePx = Number(
+      liveSellSpot?.px || liveBuySpot?.px || tranche1TargetPx
+    );
+    const spotSz =
+      (liveSellSpot ? Number(liveSellSpot.sz || 0) : 0) +
+        (liveSellRunner ? Number(liveSellRunner.sz || 0) : 0) ||
+      Number(firstLiveSpot.sz || 0.1);
     const spotSide = (firstLiveSpot.side || 'buy').toLowerCase();
     state.activeGridBot = {
       algoId: firstLiveSpot.ordId,
       instId: sense.instId,
       algoOrdType: 'contract_grid',
       direction: 'neutral',
-      status: 'RUNNING',
+      status: step6AmendedOrder ? 'AMENDED' : 'RUNNING',
       minPx: plan.minPx,
       maxPx: plan.maxPx,
       gridNum: plan.gridNum,
       gridLevels: plan.gridLevels,
       leverage: 1,
-      investmentUsdt: Number((spotPx * spotSz).toFixed(2)),
+      investmentUsdt: Number((activePx * spotSz).toFixed(2)),
       tpTriggerPx: plan.tpTriggerPx,
       slTriggerPx: plan.slTriggerPx,
       liquidationPx: verifiedLiqPx,
       unrealizedPnlUsdt: Number(spotUnrealizedPnl.toFixed(4)),
       gridProfitUsdt: Number(spotRealizedPnl.toFixed(4)),
-      amendCount: state.activeGridBot?.amendCount || 0,
+      amendCount:
+        (state.activeGridBot?.amendCount || 0) + (step6AmendedOrder ? 1 : 0),
       createdAt: firstLiveSpot.cTime
         ? new Date(Number(firstLiveSpot.cTime)).toISOString()
         : new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
       pingPongPhase:
         spotSide === 'sell' ? 'HARVESTING_EXIT' : 'SEEKING_ENTRY',
-      activeOrderPx: spotPx,
+      activeOrderPx: activePx,
+      tranche2OrderPx: liveSellRunner?.px
+        ? Number(liveSellRunner.px)
+        : undefined,
+      activeBuyOrderPx: liveBuySpot?.px ? Number(liveBuySpot.px) : undefined,
       entryFillPx: vwapCostBasisPx,
       avaxInventory,
       roundTripsCompleted: Math.max(
         completedSellCount,
         state.activeGridBot?.roundTripsCompleted || 0
       ),
+      lastFillTs:
+        lastBuyFillTs > 0 ? lastBuyFillTs : state.activeGridBot?.lastFillTs,
     };
   } else {
     state.activeGridBot = {
@@ -607,17 +1025,26 @@ export async function runPhase3Execute(
       createdAt: state.activeGridBot?.createdAt || new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
       pingPongPhase: avaxInventory >= 0.095 ? 'HARVESTING_EXIT' : 'IDLE',
+      activeOrderPx: Number(
+        liveSellSpot?.px || liveBuySpot?.px || tranche1TargetPx
+      ),
+      tranche2OrderPx: liveSellRunner?.px
+        ? Number(liveSellRunner.px)
+        : undefined,
+      activeBuyOrderPx: liveBuySpot?.px ? Number(liveBuySpot.px) : undefined,
       entryFillPx: vwapCostBasisPx,
       avaxInventory,
       roundTripsCompleted: Math.max(
         completedSellCount,
         state.activeGridBot?.roundTripsCompleted || 0
       ),
+      lastFillTs:
+        lastBuyFillTs > 0 ? lastBuyFillTs : state.activeGridBot?.lastFillTs,
     };
   }
 
   // 8. In-Flight Order Surgery (Trailing Inner-Rung Amend or Corridor Recentering with 8bps FIFO Hysteresis)
-  if (!onChainGov.circuitBreakerActive) {
+  if (!onChainGov.circuitBreakerActive && !step6AmendedOrder) {
     const buyDrift = liveBuySpot?.px
       ? Math.abs(Number(liveBuySpot.px) - effectiveOptimalBuyPx)
       : 0;
@@ -625,16 +1052,20 @@ export async function runPhase3Execute(
       Boolean(liveSellSpot?.ordId) &&
       Number(liveSellSpot?.px || 0) > 0 &&
       Number(liveSellSpot?.px || 0) < minProfitSellPx;
+    const buyNeedsToxicPullback =
+      toxicFlowGuardActive &&
+      Boolean(liveBuySpot?.ordId) &&
+      Number(liveBuySpot?.px || 0) > effectiveOptimalBuyPx;
     const trailSpot = sellNeedsRescue
       ? liveSellSpot
-      : liveBuySpot && buyDrift >= 0.008
+      : buyNeedsToxicPullback || (liveBuySpot && buyDrift >= 0.008)
       ? liveBuySpot
       : liveSellSpot || firstLiveSpot;
     const spotSide = (trailSpot?.side || 'buy').toLowerCase();
     const currentSpotPx = Number(trailSpot?.px || 0);
     const spotSz = Number(trailSpot?.sz || spotSizing.buySz);
     const rawTargetMakerPx =
-      spotSide === 'sell' ? effectiveOptimalSellPx : effectiveOptimalBuyPx;
+      spotSide === 'sell' ? tranche1TargetPx : effectiveOptimalBuyPx;
     const decMult = Math.pow(10, spotSizing.pxDec);
     const usdtAvailForBuy =
       usdtFree +
@@ -651,7 +1082,9 @@ export async function runPhase3Execute(
       currentSpotPx < minProfitSellPx ||
       (Math.abs(currentSpotPx - targetMakerPx) >= 0.008 &&
         targetMakerPx >= minProfitSellPx);
-    const shouldAmendBuy = Math.abs(currentSpotPx - targetMakerPx) >= 0.008;
+    const shouldAmendBuy =
+      Math.abs(currentSpotPx - targetMakerPx) >= 0.008 ||
+      (toxicFlowGuardActive && currentSpotPx > targetMakerPx);
     const needsInnerRungTrail =
       Boolean(trailSpot?.ordId) &&
       currentSpotPx > 0 &&
@@ -733,7 +1166,14 @@ export async function runPhase3Execute(
       cliRecords.push(spotAmendRes.record);
 
       if (spotAmendRes.success) {
-        state.activeGridBot.activeOrderPx = newSpotPx;
+        if (spotSide === 'buy') {
+          state.activeGridBot.activeBuyOrderPx = newSpotPx;
+          if (!liveSellSpot) {
+            state.activeGridBot.activeOrderPx = newSpotPx;
+          }
+        } else {
+          state.activeGridBot.activeOrderPx = newSpotPx;
+        }
         state.activeGridBot.entryFillPx = vwapCostBasisPx;
         state.activeGridBot.minPx = plan.minPx;
         state.activeGridBot.maxPx = plan.maxPx;
@@ -800,7 +1240,11 @@ export async function runPhase3Execute(
         firstLiveSpot.ordId
       } @ $${(state.activeGridBot.activeOrderPx || Number(firstLiveSpot.px)).toFixed(
         3
-      )} (${firstLiveSpot.sz || spotSizing.sellSz} ${baseCcy} • ${state.activeGridBot.pingPongPhase})`
+      )} (${firstLiveSpot.sz || spotSizing.sellSz} ${baseCcy}${
+        state.activeGridBot.tranche2OrderPx
+          ? ` + T2 @ $${state.activeGridBot.tranche2OrderPx.toFixed(3)}`
+          : ''
+      } • ${state.activeGridBot.pingPongPhase})`
     : `Computed target corridor [${plan.minPx.toFixed(4)}, ${plan.maxPx.toFixed(
         4
       )}] | Optimal Buy $${effectiveOptimalBuyPx.toFixed(3)} / Sell $${effectiveOptimalSellPx.toFixed(

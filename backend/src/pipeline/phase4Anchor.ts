@@ -8,6 +8,7 @@ import {
   http,
   keccak256,
   parseAbi,
+  recoverMessageAddress,
   toHex,
 } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -249,7 +250,8 @@ export async function runPhase4Anchor(
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
 
-  const { privateKey, address, deployedContractAddress } = getOrCreateOperatorWallet();
+  const wallet = getOrCreateOperatorWallet();
+  const { privateKey, address, deployedContractAddress } = wallet;
   if (
     deployedContractAddress &&
     (!state.contractAddress ||
@@ -283,6 +285,22 @@ export async function runPhase4Anchor(
     lockedEarnUsdtE2,
     okxAlgoOrOrdId,
     actionExecuted: execute.actionExecuted,
+    vwapCostBasisPx: execute.activeGridBot?.entryFillPx ?? sense.market.lastPx,
+    activeOrderPx: execute.activeGridBot?.activeOrderPx ?? sense.market.lastPx,
+    tranche2OrderPx: execute.activeGridBot?.tranche2OrderPx ?? null,
+    avaxInventory: execute.activeGridBot?.avaxInventory ?? 0,
+    roundTripsCompleted: execute.activeGridBot?.roundTripsCompleted ?? 0,
+    drawdownBps:
+      execute.treasury.highWaterMarkNavUsdt > 0
+        ? Math.max(
+            0,
+            Math.round(
+              ((execute.treasury.highWaterMarkNavUsdt - execute.treasury.totalNavUsdt) /
+                execute.treasury.highWaterMarkNavUsdt) *
+                10000
+            )
+          )
+        : 0,
   });
 
   const reasoningHash = keccak256(toHex(canonicalDecisionPayload));
@@ -291,6 +309,12 @@ export async function runPhase4Anchor(
   const operatorSignature = await account.signMessage({
     message: { raw: reasoningHash },
   });
+  const recoveredAddress = await recoverMessageAddress({
+    message: { raw: reasoningHash },
+    signature: operatorSignature,
+  });
+  const signatureVerified =
+    recoveredAddress.toLowerCase() === wallet.address.toLowerCase();
 
   // Encode exact Solidity calldata for `recordDecision(...)`
   const encodedRecordDecisionCalldata = encodeFunctionData({
@@ -441,6 +465,36 @@ export async function runPhase4Anchor(
     // Graceful offline / RPC fallback
   }
 
+  const isValidContract = Boolean(
+    state.contractAddress &&
+      state.contractAddress.toLowerCase() !== PLACEHOLDER_CONTRACT_ADDRESS.toLowerCase()
+  );
+  const onChainState = {
+    totalDecisions: onChainTotalDecisions,
+    reputationScore: onChainReputationScore,
+    circuitBreakerActive: onChainCircuitBreaker,
+    finalityMs,
+  };
+  const liveDrawdownPct =
+    execute.treasury.highWaterMarkNavUsdt > 0
+      ? ((execute.treasury.highWaterMarkNavUsdt - execute.treasury.totalNavUsdt) /
+          execute.treasury.highWaterMarkNavUsdt) *
+        100
+      : 0;
+  if (
+    sense.scenario === 'LIVE' &&
+    liveDrawdownPct >= (brain.riskParameters.maxDrawdownGuardPct || 3.0) &&
+    !onChainState.circuitBreakerActive &&
+    isValidContract
+  ) {
+    try {
+      await toggleOnChainCircuitBreaker(state.contractAddress, true);
+      onChainState.circuitBreakerActive = true;
+    } catch {
+      onChainState.circuitBreakerActive = true;
+    }
+  }
+
   const anchorRecord: AvalancheAnchorRecord = {
     id: `avax-anchor-${Date.now()}`,
     timestamp: new Date().toISOString(),
@@ -474,8 +528,10 @@ export async function runPhase4Anchor(
     reasoningHash,
     state,
     onChainTotalDecisions,
-    onChainReputationScore
+    onChainReputationScore,
+    signatureVerified
   );
+  erc8004Passport.validationRegistry.signatureVerified = signatureVerified;
 
   const completedAtMs = Date.now();
 
@@ -495,12 +551,7 @@ export async function runPhase4Anchor(
     },
     anchorRecord,
     erc8004Passport,
-    onChainState: {
-      totalDecisions: onChainTotalDecisions,
-      reputationScore: onChainReputationScore,
-      circuitBreakerActive: onChainCircuitBreaker,
-      finalityMs,
-    },
+    onChainState,
     operatorWallet: {
       address,
       network: 'Avalanche Fuji Testnet (43113) / C-Chain Ready',
@@ -539,7 +590,8 @@ export function buildERC8004AgentPassport(
   latestReasoningHash: string,
   state: PersistedSurgeonState,
   onChainValidatedTasks?: number,
-  onChainTrustScore?: number
+  onChainTrustScore?: number,
+  signatureVerified: boolean = true
 ): ERC8004AgentPassport {
   const validatedSurgeries = state.surgeryHistory.length;
   const validatedProfitSweeps = state.profitSweepHistory.length;
@@ -617,7 +669,7 @@ export function buildERC8004AgentPassport(
     },
     validationRegistry: {
       reasoningHash: latestReasoningHash,
-      signatureVerified: true,
+      signatureVerified,
       validatorAddress: DEPLOYED_VALIDATION_REGISTRY,
       validationScheme: 'Ava Labs ValidationRegistry + EIP-191 ECDSA Audit',
       totalValidatedTasks,
