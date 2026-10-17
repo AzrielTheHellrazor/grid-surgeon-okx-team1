@@ -151,108 +151,82 @@ export async function runPhase1Sense(
     oiUsd * 0.17 * (1 - clamp(oiDelta1hPct * 0.04 - fundingRate * 400, -0.35, 0.35))
   );
 
-  // Attempt authenticated OKX CLI sensors (with unbreakable fallback payload if user is unauthenticated)
-  const [sentimentRes, smartMoneyRes] = await Promise.all([
+  // Execute authenticated OKX CLI sensors (Sentiment, SmartMoney, Economic Calendar)
+  const [sentimentRes, smartMoneyRes, calendarRes] = await Promise.all([
     runOkxCli<unknown>({
       args: ['news', 'coin-sentiment', '--coins', 'AVAX,BTC', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-sentiment-tracker',
-      simulateIfUnauthed: true,
-      simulatedSummary: `AVAX Retail Sentiment: ${(liveDerivedBullish * 100).toFixed(0)}% Bullish / ${(liveDerivedBearish * 100).toFixed(0)}% Bearish [Derived from Live RSI=${rsi14.toFixed(1)} & 24h Δ=${change24hPct}%]`,
-      simulatedPayload: [
-        {
-          coin: 'AVAX',
-          bullishRatio: liveDerivedBullish,
-          bearishRatio: liveDerivedBearish,
-          source: 'DERIVED_FROM_LIVE_OKX',
-        },
-      ],
     }),
     runOkxCli<unknown>({
       args: ['smartmoney', 'signal-overview-by-filter', '--instCcyList', 'AVAX,BTC', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-smartmoney',
-      simulateIfUnauthed: true,
-      simulatedSummary: `Smart Money AVAX Whales: Long $${(baseWhaleLongUsd / 1e6).toFixed(2)}M vs Short $${(baseWhaleShortUsd / 1e6).toFixed(2)}M [Anchored to Live OI $${(oiUsd / 1e6).toFixed(1)}M]`,
-      simulatedPayload: [
-        {
-          instCcy: 'AVAX',
-          longNotionalUsd: baseWhaleLongUsd,
-          shortNotionalUsd: baseWhaleShortUsd,
-          source: 'DERIVED_FROM_LIVE_OKX',
-        },
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'news',
+        'economic-calendar',
+        '--region',
+        'united_states',
+        '--importance',
+        '3',
+        '--limit',
+        '5',
+        '--json',
       ],
+      phase: 'BORDER_1_SENSE',
+      skill: 'okx-sentiment-tracker',
     }),
   ]);
 
-  cliRecords.push(sentimentRes.record, smartMoneyRes.record);
+  cliRecords.push(sentimentRes.record, smartMoneyRes.record, calendarRes.record);
 
   const extractedSentiment = sentimentRes.success
     ? extractCliSentiment(sentimentRes.data)
     : null;
-  let bullishRatio = extractedSentiment
+  const bullishRatio = extractedSentiment
     ? extractedSentiment.bullishRatio
     : liveDerivedBullish;
-  let bearishRatio = extractedSentiment
+  const bearishRatio = extractedSentiment
     ? extractedSentiment.bearishRatio
     : liveDerivedBearish;
-  let sentimentSource: DataSourceTag = sentimentRes.success
+  const sentimentSource: DataSourceTag = sentimentRes.success
     ? 'LIVE_OKX_CLI'
     : 'DERIVED_FROM_LIVE_OKX';
-  let headlineSummary = `AVAX consolidating at $${lastPx.toFixed(4)} with RSI(14)=${rsi14.toFixed(1)} and 1H OI Δ=${oiDelta1hPct.toFixed(2)}%.`;
+  const headlineSummary = `Live OKX ${INST_ID}: $${lastPx.toFixed(4)} | RSI(14)=${rsi14.toFixed(1)} | 1H OI Δ=${oiDelta1hPct.toFixed(2)}%`;
 
   const extractedWhales = smartMoneyRes.success
     ? extractCliSmartMoney(smartMoneyRes.data)
     : null;
-  let longNotionalUsd = extractedWhales
+  const longNotionalUsd = extractedWhales
     ? extractedWhales.longNotionalUsd
     : baseWhaleLongUsd;
-  let shortNotionalUsd = extractedWhales
+  const shortNotionalUsd = extractedWhales
     ? extractedWhales.shortNotionalUsd
     : baseWhaleShortUsd;
-  let smartMoneySource: DataSourceTag = smartMoneyRes.success
+  const smartMoneySource: DataSourceTag = smartMoneyRes.success
     ? 'LIVE_OKX_CLI'
     : 'DERIVED_FROM_LIVE_OKX';
 
-  let macroCalendar: Phase1SenseOutput['macroCalendar'] = {
-    imminentHighImpactEvent: false,
-    eventName: 'US Initial Jobless Claims / Fed Speaker Digest (No High-Impact Shock <30m)',
-    minutesUntilRelease: 280,
-    importance: 2,
-    region: 'united_states',
-    source: 'DERIVED_FROM_LIVE_OKX',
-  };
+  const firstCal =
+    calendarRes.success && Array.isArray(calendarRes.data) && calendarRes.data[0]
+      ? calendarRes.data[0]
+      : null;
+  const calTs = Number(firstCal?.date || 0);
+  const diffMin =
+    calTs > Date.now()
+      ? Math.round((calTs - Date.now()) / 60000)
+      : 240;
 
-  // Apply Scenario Overrides for Stage Pitch & Vibecoder Testing while keeping live AVAX prices
-  if (scenario === 'BULL_TRAP') {
-    bullishRatio = 0.87;
-    bearishRatio = 0.13;
-    fundingRate = 0.00065; // Elevated positive funding (+0.065% per 8h)
-    longNotionalUsd = 2850000;
-    shortNotionalUsd = 11400000; // Whales heavily net short (-0.60 whale ratio)
-    oiDelta1hPct = 5.84;
-    sentimentSource = 'SCENARIO_STRESS_TEST';
-    smartMoneySource = 'SCENARIO_STRESS_TEST';
-    headlineSummary =
-      '⚠️ RETAIL EUPHORIA ALERT: Retail 87% Bullish & chasing breakout while OKX Smart Money Whales built $11.4M Net Short notional!';
-  } else if (scenario === 'MACRO_BUNKER') {
-    macroCalendar = {
-      imminentHighImpactEvent: true,
-      eventName: 'US CPI YoY & FOMC Emergency Rate Decision (Importance=3)',
-      minutesUntilRelease: 14,
-      importance: 3,
-      region: 'united_states',
-      source: 'SCENARIO_STRESS_TEST',
-    };
-    headlineSummary =
-      '🛡️ MACRO BUNKER TRIGGERED: US High-Impact (Importance=3) CPI/FOMC Print in 14 minutes — De-leveraging & tightening SL.';
-  } else if (scenario === 'DRIFT_SURGERY') {
-    headlineSummary =
-      `🔧 BOUNDARY DRIFT DETECTED: Live AVAX price ($${lastPx.toFixed(4)}) drifted into the upper 93% boundary of the active grid corridor. In-flight surgery required.`;
-  } else if (scenario === 'PROFIT_SWEEP') {
-    headlineSummary =
-      `💰 HIGH-WATER MARK SURPASSED: Realized cycle profit ready for 50% autonomous sweep from Trading (18) → Funding (6) → OKX Simple Earn.`;
-  }
+  const macroCalendar: Phase1SenseOutput['macroCalendar'] = {
+    imminentHighImpactEvent: diffMin > 0 && diffMin <= 30,
+    eventName: firstCal?.event || 'US Macro Calendar Clear',
+    minutesUntilRelease: diffMin,
+    importance: 3,
+    region: firstCal?.region || 'United States',
+    source: calendarRes.success ? 'LIVE_OKX_CLI' : 'DERIVED_FROM_LIVE_OKX',
+  };
 
   const sRetail = Number((bullishRatio - bearishRatio).toFixed(4));
   const totalWhale = longNotionalUsd + shortNotionalUsd;

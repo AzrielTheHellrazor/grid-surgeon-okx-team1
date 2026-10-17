@@ -43,14 +43,8 @@ export function runPhase2Brain(
   const recenteredMinPx = Number((lastPx - 2.5 * atr).toFixed(4));
   const recenteredMaxPx = Number((lastPx + 2.5 * atr).toFixed(4));
 
-  // If scenario is DRIFT_SURGERY, simulate that existing grid drifted so currentPx is at 93.4% of old corridor
-  let existingMin = currentGridBot?.minPx ?? recenteredMinPx;
-  let existingMax = currentGridBot?.maxPx ?? recenteredMaxPx;
-  if (sense.scenario === 'DRIFT_SURGERY') {
-    const span = 5 * atr;
-    existingMin = Number((lastPx - 0.934 * span).toFixed(4));
-    existingMax = Number((existingMin + span).toFixed(4));
-  }
+  const existingMin = currentGridBot && currentGridBot.minPx > 0 ? currentGridBot.minPx : recenteredMinPx;
+  const existingMax = currentGridBot && currentGridBot.maxPx > 0 ? currentGridBot.maxPx : recenteredMaxPx;
 
   const existingSpan = Math.max(0.0001, existingMax - existingMin);
   const corridorPositionPct = Number(
@@ -59,8 +53,7 @@ export function runPhase2Brain(
 
   const isOutOfSafeCorridor =
     corridorPositionPct > 0.88 ||
-    corridorPositionPct < 0.12 ||
-    sense.scenario === 'DRIFT_SURGERY';
+    corridorPositionPct < 0.12;
 
   const targetMinPx = isOutOfSafeCorridor ? recenteredMinPx : existingMin;
   const targetMaxPx = isOutOfSafeCorridor ? recenteredMaxPx : existingMax;
@@ -87,7 +80,7 @@ export function runPhase2Brain(
     'HOLD_GRID_CORRIDOR';
   let actionSummary = '';
   let targetLeverage = 3;
-  let profitSweepEligibleUsdt = 0;
+  const profitSweepEligibleUsdt = 0;
 
   if (
     sense.macroCalendar.imminentHighImpactEvent &&
@@ -130,14 +123,6 @@ export function runPhase2Brain(
     recommendedAction = 'EXECUTE_COUNTER_TRAP_LONG';
     targetLeverage = 3;
     actionSummary = `Stop running Grid Bot -> Execute asymmetric 3x Counter-Trap LONG on AVAX-USDT-SWAP with OCO TP/SL + 1.5% Trailing Stop.`;
-  } else if (sense.scenario === 'PROFIT_SWEEP') {
-    regime = 'RANGING_GRID';
-    regimeIndex = 0;
-    regimeLabel = 'HIGH-WATER MARK TREASURY // 50% PROFIT SWEEP TO SIMPLE EARN';
-    regimeReason = `Realized cycle profit (+$84.60 USDT) pushed portfolio NAV above High-Water Mark. Locking 50% ($42.30 USDT) into OKX Simple Earn.`;
-    recommendedAction = 'SWEEP_PROFIT_TO_EARN';
-    profitSweepEligibleUsdt = 42.3;
-    actionSummary = `Transfer $42.30 USDT (50% of realized profit) from Unified Trading (18) -> Funding (6) and subscribe to OKX Simple Earn.`;
   } else if (adx >= 25 && Math.abs(oiDelta1hPct) >= 3.0) {
     regime = 'BREAKOUT_DCA';
     regimeIndex = 3;
@@ -151,7 +136,7 @@ export function runPhase2Brain(
   } else {
     regime = 'RANGING_GRID';
     regimeIndex = 0;
-    if (!currentGridBot || currentGridBot.status === 'STOPPED') {
+    if (!currentGridBot || currentGridBot.status === 'STOPPED' || currentGridBot.algoId === 'NONE') {
       recommendedAction = 'DEPLOY_CONTRACT_GRID';
       actionSummary = `Deploy 12-level neutral Contract Grid on AVAX-USDT-SWAP in [${targetMinPx.toFixed(
         4
