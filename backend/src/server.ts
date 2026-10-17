@@ -7,6 +7,7 @@ import {
   saveSurgeonState,
   updateContractAddress,
 } from './pipeline/orchestrator';
+import { executeLiveOkxAction } from './pipeline/phase3Execute';
 import {
   buildERC8004AgentPassport,
   getOrCreateOperatorWallet,
@@ -112,6 +113,65 @@ app.post('/api/cycle', async (_req, res) => {
     res.status(500).json({
       ok: false,
       error: err instanceof Error ? err.message : 'Pipeline cycle error',
+    });
+  }
+});
+
+app.post('/api/instrument', async (req, res) => {
+  try {
+    const allowed = [
+      'AVAX-USDT-SWAP',
+      'BTC-USDT-SWAP',
+      'ETH-USDT-SWAP',
+      'SOL-USDT-SWAP',
+    ];
+    const requested = String(req.body?.instId || 'AVAX-USDT-SWAP').toUpperCase();
+    const instId = allowed.includes(requested) ? requested : 'AVAX-USDT-SWAP';
+    const state = getSurgeonState();
+    state.selectedInstId = instId;
+    saveSurgeonState(state);
+
+    const cycle = await executeFullPipelineCycle('LIVE');
+    res.json({
+      ok: true,
+      instId,
+      cycle,
+      state: getSurgeonState(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Instrument switch error',
+    });
+  }
+});
+
+app.post('/api/action', async (req, res) => {
+  try {
+    const rawAction = String(req.body?.action || '').toUpperCase();
+    const validActions = ['EARN_SWEEP', 'EARN_REDEEM', 'GRID_DEPLOY'] as const;
+    if (!validActions.includes(rawAction as any)) {
+      res.status(400).json({ ok: false, error: 'Invalid action' });
+      return;
+    }
+
+    const state = getSurgeonState();
+    const actionRes = await executeLiveOkxAction(rawAction as any, state);
+    state.cliHistory = [...actionRes.records, ...state.cliHistory].slice(0, 60);
+    saveSurgeonState(state);
+
+    // Immediately run a fresh live cycle to update balances and state
+    const cycle = await executeFullPipelineCycle('LIVE');
+    res.json({
+      ok: actionRes.ok,
+      summary: actionRes.summary,
+      cycle,
+      state: getSurgeonState(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Action execution error',
     });
   }
 });

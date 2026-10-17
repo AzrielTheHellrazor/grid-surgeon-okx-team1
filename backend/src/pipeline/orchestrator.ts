@@ -16,6 +16,7 @@ const STATE_FILE = path.join(DATA_DIR, 'surgeon-state.json');
 function createInitialState(): PersistedSurgeonState {
   return {
     cycleCount: 0,
+    selectedInstId: 'AVAX-USDT-SWAP',
     autoPilotEnabled: false,
     autoPilotIntervalSec: 20,
     contractAddress: '0x7c52f6b7b588698700abbac6cbe37f3cfca305cd',
@@ -74,6 +75,7 @@ export function getSurgeonState(): PersistedSurgeonState {
         fs.readFileSync(STATE_FILE, 'utf8')
       ) as PersistedSurgeonState;
       if (loaded && typeof loaded.cycleCount === 'number') {
+        if (!loaded.selectedInstId) loaded.selectedInstId = 'AVAX-USDT-SWAP';
         memoryState = loaded;
         return memoryState;
       }
@@ -149,14 +151,20 @@ export async function executeFullPipelineCycle(
       const startedAtMs = Date.now();
       const startedAt = new Date(startedAtMs).toISOString();
       const nextCycleNum = state.cycleCount + 1;
+      const targetInstId = state.selectedInstId || 'AVAX-USDT-SWAP';
 
       // BORDER 1: Multi-Modal OKX CLI Sensing
-      const border1Sense = await runPhase1Sense(scenario);
+      const border1Sense = await runPhase1Sense(scenario, targetInstId);
 
-      // Initialize grid bot bounds on very first cycle if empty
-      if (state.activeGridBot && state.activeGridBot.minPx === 0) {
+      // Initialize or recenter grid bot bounds if empty or if instrument changed
+      if (
+        state.activeGridBot &&
+        (state.activeGridBot.minPx === 0 ||
+          state.activeGridBot.instId !== border1Sense.instId)
+      ) {
         const atr = border1Sense.technicals.atr14;
         const lastPx = border1Sense.market.lastPx;
+        state.activeGridBot.instId = border1Sense.instId;
         state.activeGridBot.minPx = Number((lastPx - 2.5 * atr).toFixed(4));
         state.activeGridBot.maxPx = Number((lastPx + 2.5 * atr).toFixed(4));
       }

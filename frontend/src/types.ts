@@ -288,6 +288,7 @@ export interface AvalancheAnchorRecord {
   txHash: string | null;
   status: 'SIGNED_AND_CALLDATA_READY' | 'BROADCAST_ON_CHAIN';
   blockNumber: number | null;
+  finalityMs?: number;
 }
 
 export interface ERC8004AgentPassport {
@@ -322,6 +323,12 @@ export interface Phase4AnchorOutput {
   meta: BorderStatusMeta;
   anchorRecord: AvalancheAnchorRecord;
   erc8004Passport?: ERC8004AgentPassport;
+  onChainState?: {
+    totalDecisions: number;
+    reputationScore: number;
+    circuitBreakerActive: boolean;
+    finalityMs: number;
+  };
   operatorWallet: {
     address: string;
     network: string;
@@ -355,6 +362,7 @@ export interface FullPipelineCycleResult {
 
 export interface PersistedSurgeonState {
   cycleCount: number;
+  selectedInstId?: string;
   autoPilotEnabled: boolean;
   autoPilotIntervalSec: number;
   contractAddress: string;

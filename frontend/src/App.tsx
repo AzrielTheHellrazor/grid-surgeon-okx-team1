@@ -15,8 +15,12 @@ import {
   ExternalLink,
   Play,
   Pause,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Zap,
 } from 'lucide-react';
 import {
+  CandleBar,
   FullPipelineCycleResult,
   PersistedSurgeonState,
 } from './types';
@@ -31,6 +35,13 @@ import {
 
 const API_BASE = 'http://localhost:4001/api';
 
+const INSTRUMENTS = [
+  { id: 'AVAX-USDT-SWAP', short: 'AVAX' },
+  { id: 'BTC-USDT-SWAP', short: 'BTC' },
+  { id: 'ETH-USDT-SWAP', short: 'ETH' },
+  { id: 'SOL-USDT-SWAP', short: 'SOL' },
+];
+
 declare global {
   interface Window {
     ethereum?: {
@@ -39,10 +50,173 @@ declare global {
   }
 }
 
+function formatPrice(px: number): string {
+  if (!Number.isFinite(px)) return '0.00';
+  if (px >= 1000) return px.toFixed(1);
+  if (px >= 50) return px.toFixed(2);
+  return px.toFixed(4);
+}
+
+/**
+ * Clean Metallic SVG Candlestick + 12 Grid Corridor Chart
+ */
+function GridCandleChart({
+  candles,
+  gridLevels,
+  minPx,
+  maxPx,
+  tpPx,
+  slPx,
+  lastPx,
+}: {
+  candles: CandleBar[];
+  gridLevels: number[];
+  minPx: number;
+  maxPx: number;
+  tpPx: number;
+  slPx: number;
+  lastPx: number;
+}) {
+  const bars = candles.slice(-36);
+  if (bars.length === 0) return null;
+
+  const candleHigh = Math.max(...bars.map((b) => b.high));
+  const candleLow = Math.min(...bars.map((b) => b.low));
+  const chartMax = Math.max(candleHigh, maxPx, tpPx) * 1.002;
+  const chartMin = Math.min(candleLow, minPx, slPx) * 0.998;
+  const span = Math.max(0.0001, chartMax - chartMin);
+
+  const width = 560;
+  const height = 136;
+  const toY = (px: number) =>
+    Math.min(
+      height - 4,
+      Math.max(4, height - ((px - chartMin) / span) * (height - 8) - 4)
+    );
+
+  const barStep = width / bars.length;
+  const bodyWidth = Math.max(3, barStep * 0.56);
+
+  return (
+    <div className="glass-well rounded-xl p-2.5 relative overflow-hidden">
+      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1 px-1">
+        <span>1H CANDLES ({bars.length}) + 12 GRID LEVELS</span>
+        <span className="text-zinc-300">
+          Range: ${formatPrice(minPx)} – ${formatPrice(maxPx)}
+        </span>
+      </div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-[136px] overflow-visible"
+        preserveAspectRatio="none"
+      >
+        {/* Grid Corridor Shaded Band */}
+        <rect
+          x={0}
+          y={toY(maxPx)}
+          width={width}
+          height={Math.max(2, toY(minPx) - toY(maxPx))}
+          fill="rgba(255,255,255,0.025)"
+        />
+
+        {/* 12 Horizontal Grid Lines */}
+        {gridLevels.map((lvl, idx) => {
+          const y = toY(lvl);
+          const isBoundary = idx === 0 || idx === gridLevels.length - 1;
+          return (
+            <line
+              key={idx}
+              x1={0}
+              y1={y}
+              x2={width}
+              y2={y}
+              stroke={
+                isBoundary
+                  ? 'rgba(255,255,255,0.28)'
+                  : 'rgba(255,255,255,0.07)'
+              }
+              strokeWidth={isBoundary ? 1 : 0.6}
+              strokeDasharray={isBoundary ? 'none' : '3 3'}
+            />
+          );
+        })}
+
+        {/* TP & SL Trigger Lines */}
+        <line
+          x1={0}
+          y1={toY(tpPx)}
+          x2={width}
+          y2={toY(tpPx)}
+          stroke="rgba(52,211,153,0.45)"
+          strokeWidth={0.8}
+          strokeDasharray="4 4"
+        />
+        <line
+          x1={0}
+          y1={toY(slPx)}
+          x2={width}
+          y2={toY(slPx)}
+          stroke="rgba(251,113,133,0.45)"
+          strokeWidth={0.8}
+          strokeDasharray="4 4"
+        />
+
+        {/* 1H Candlesticks */}
+        {bars.map((bar, i) => {
+          const cx = i * barStep + barStep / 2;
+          const isBull = bar.close >= bar.open;
+          const color = isBull ? '#34d399' : '#fb7185';
+          const highY = toY(bar.high);
+          const lowY = toY(bar.low);
+          const topY = toY(Math.max(bar.open, bar.close));
+          const botY = toY(Math.min(bar.open, bar.close));
+          const bodyH = Math.max(1.5, botY - topY);
+
+          return (
+            <g key={bar.ts}>
+              <line
+                x1={cx}
+                y1={highY}
+                x2={cx}
+                y2={lowY}
+                stroke={color}
+                strokeWidth={1}
+                opacity={0.75}
+              />
+              <rect
+                x={cx - bodyWidth / 2}
+                y={topY}
+                width={bodyWidth}
+                height={bodyH}
+                fill={color}
+                rx={0.8}
+              />
+            </g>
+          );
+        })}
+
+        {/* Live Price Highlight Line */}
+        <line
+          x1={0}
+          y1={toY(lastPx)}
+          x2={width}
+          y2={toY(lastPx)}
+          stroke="#ffffff"
+          strokeWidth={1}
+          strokeDasharray="2 2"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export function App() {
   const [state, setState] = useState<PersistedSurgeonState | null>(null);
   const [cycle, setCycle] = useState<FullPipelineCycleResult | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [switchingInst, setSwitchingInst] = useState<string | null>(null);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+  const [actionToast, setActionToast] = useState<string | null>(null);
   const [inspectedBorder, setInspectedBorder] = useState<1 | 2 | 3 | 4 | null>(
     null
   );
@@ -91,6 +265,54 @@ export function App() {
       setErrorBanner('Backend offline (:4001)');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const switchInstrument = async (instId: string) => {
+    if (switchingInst) return;
+    setSwitchingInst(instId);
+    setErrorBanner(null);
+    try {
+      const res = await fetch(`${API_BASE}/instrument`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setState(data.state);
+        setCycle(data.cycle);
+      }
+    } catch {
+      setErrorBanner('Instrument switch failed');
+    } finally {
+      setSwitchingInst(null);
+    }
+  };
+
+  const triggerLiveAction = async (
+    action: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY'
+  ) => {
+    if (runningAction) return;
+    setRunningAction(action);
+    setActionToast(null);
+    try {
+      const res = await fetch(`${API_BASE}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.state) setState(data.state);
+      if (data.cycle) setCycle(data.cycle);
+      if (data.summary) {
+        setActionToast(data.summary);
+        setTimeout(() => setActionToast(null), 5000);
+      }
+    } catch {
+      setErrorBanner('Action execution failed');
+    } finally {
+      setRunningAction(null);
     }
   };
 
@@ -201,21 +423,50 @@ export function App() {
       ? Math.round((b1.smartMoney.longNotionalUsd / whaleTotal) * 100)
       : 50;
 
+  const finalityMs =
+    b4.onChainState?.finalityMs || b4.anchorRecord.finalityMs || 0;
+
   return (
     <div className="min-h-dvh flex flex-col text-zinc-100 select-none">
       {/* 1. COMPACT EXCHANGE TOP BAR */}
       <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-zinc-950/75 backdrop-blur-2xl">
         <div className="max-w-[1640px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-          {/* Left: Brand + Ticker + Key Market Stats */}
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2.5">
+          {/* Left: Brand + Multi-Asset Switcher + Live Ticker */}
+          <div className="flex flex-wrap items-center gap-3.5">
+            <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg metal-badge flex items-center justify-center">
                 <Crosshair className="size-4 text-zinc-100" />
               </div>
               <span className="font-bold text-sm tracking-tight text-metallic">
                 GRID-SURGEON
               </span>
-              <Badge variant="metallic">{b1.instId}</Badge>
+            </div>
+
+            {/* Multi-Asset Selector (AVAX / BTC / ETH / SOL) */}
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+              {INSTRUMENTS.map((inst) => {
+                const isSelected = b1.instId === inst.id;
+                const isLoadingThis = switchingInst === inst.id;
+                return (
+                  <button
+                    key={inst.id}
+                    type="button"
+                    disabled={switchingInst !== null}
+                    onClick={() => switchInstrument(inst.id)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-mono font-medium transition flex items-center gap-1',
+                      isSelected
+                        ? 'bg-white/[0.15] text-white border border-white/25 shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-100'
+                    )}
+                  >
+                    {isLoadingThis && (
+                      <RefreshCw className="size-2.5 animate-spin text-emerald-400" />
+                    )}
+                    <span>{inst.short}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="h-5 w-px bg-white/[0.08]" />
@@ -224,7 +475,7 @@ export function App() {
             <div className="flex items-center gap-4 font-mono">
               <div className="flex items-baseline gap-2">
                 <span className="text-lg font-bold text-white">
-                  ${b1.market.lastPx.toFixed(4)}
+                  ${formatPrice(b1.market.lastPx)}
                 </span>
                 <span
                   className={cn(
@@ -243,7 +494,8 @@ export function App() {
                 <div>
                   <span className="text-zinc-500 mr-1.5">24h H/L</span>
                   <span className="text-zinc-200">
-                    ${b1.market.high24h.toFixed(2)} / ${b1.market.low24h.toFixed(2)}
+                    ${formatPrice(b1.market.high24h)} / $
+                    {formatPrice(b1.market.low24h)}
                   </span>
                 </div>
                 <div>
@@ -263,7 +515,7 @@ export function App() {
             </div>
           </div>
 
-          {/* Right: 4-Border Status + Refresh + Auto-Pilot */}
+          {/* Right: 4-Border Status + Sync OKX + Auto-Pilot */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 font-mono text-[11px]">
               {[
@@ -299,7 +551,10 @@ export function App() {
               className="metal-btn px-3 py-1.5 rounded-lg font-mono text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
             >
               <RefreshCw
-                className={cn('size-3.5 text-emerald-400', refreshing && 'animate-spin')}
+                className={cn(
+                  'size-3.5 text-emerald-400',
+                  refreshing && 'animate-spin'
+                )}
               />
               <span>Sync OKX</span>
             </button>
@@ -344,6 +599,19 @@ export function App() {
           </div>
         )}
 
+        {actionToast && (
+          <div className="glass-subcard rounded-lg px-3 py-1.5 text-emerald-300 text-xs font-mono flex items-center justify-between border border-emerald-400/30">
+            <span>OKX CLI: {actionToast}</span>
+            <button
+              type="button"
+              onClick={() => setActionToast(null)}
+              className="text-zinc-400 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Expandable Border JSON Drawer (only visible when clicked) */}
         {inspectedBorder && (
           <div className="glass-well rounded-xl p-3 font-mono text-xs">
@@ -377,38 +645,55 @@ export function App() {
 
         {/* 4 CLEAN EXCHANGE PANELS (ALWAYS VISIBLE) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 flex-1">
-          {/* PANEL 1: GRID CORRIDOR & SURGERY */}
+          {/* PANEL 1: GRID CORRIDOR & LIVE CANDLE CHART */}
           <Card>
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Activity className="size-4 text-emerald-400" />
-                Grid Bot Corridor
+                Grid Bot Corridor ({b1.instId})
               </CardTitle>
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline">#{gridBot.algoId}</Badge>
                 <Badge variant="emerald">
                   {gridBot.status} • {gridBot.leverage}x
                 </Badge>
+                <button
+                  type="button"
+                  disabled={runningAction !== null}
+                  onClick={() => triggerLiveAction('GRID_DEPLOY')}
+                  className="metal-btn px-2.5 py-0.5 rounded text-[11px] font-mono text-zinc-100 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Wrench className="size-3 text-emerald-400" />
+                  <span>
+                    {gridBot.algoId !== 'NO_ACTIVE_BOT' &&
+                    gridBot.algoId !== 'NONE'
+                      ? 'Amend Grid'
+                      : 'Deploy Grid'}
+                  </span>
+                </button>
               </div>
             </CardHeader>
 
-            <CardContent className="p-4 gap-3">
+            <CardContent className="p-4 gap-2.5">
               {/* 5 Compact Indicators */}
               <div className="grid grid-cols-5 gap-2">
                 {[
-                  { k: 'ATR(14)', v: `$${b1.technicals.atr14.toFixed(3)}` },
+                  { k: 'ATR(14)', v: `$${formatPrice(b1.technicals.atr14)}` },
                   { k: 'ADX(14)', v: b1.technicals.adx14.toFixed(1) },
                   { k: 'RSI(14)', v: b1.technicals.rsi14.toFixed(1) },
-                  { k: 'BB Width', v: `${b1.technicals.bbWidthPct.toFixed(2)}%` },
+                  {
+                    k: 'BB Width',
+                    v: `${b1.technicals.bbWidthPct.toFixed(2)}%`,
+                  },
                   {
                     k: 'Liq Px',
-                    v: `$${gridBot.liquidationPx.toFixed(2)}`,
+                    v: `$${formatPrice(gridBot.liquidationPx)}`,
                     c: 'text-rose-400',
                   },
                 ].map((m) => (
                   <div
                     key={m.k}
-                    className="glass-subcard rounded-lg px-2.5 py-2 flex flex-col"
+                    className="glass-subcard rounded-lg px-2.5 py-1.5 flex flex-col"
                   >
                     <span className="text-[10px] font-mono text-zinc-500">
                       {m.k}
@@ -425,8 +710,19 @@ export function App() {
                 ))}
               </div>
 
+              {/* Live 1H Candlesticks + 12-Grid Corridor Chart */}
+              <GridCandleChart
+                candles={b1.candles || []}
+                gridLevels={b2.gridPlan.gridLevels}
+                minPx={gridBot.minPx}
+                maxPx={gridBot.maxPx}
+                tpPx={gridBot.tpTriggerPx}
+                slPx={gridBot.slTriggerPx}
+                lastPx={b1.market.lastPx}
+              />
+
               {/* Corridor Range Gauge */}
-              <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
+              <div className="glass-subcard rounded-xl p-2.5 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-zinc-400">
                     Position: <strong className="text-white">{corridorPct}%</strong>
@@ -445,7 +741,7 @@ export function App() {
                   </span>
                 </div>
 
-                <div className="relative h-3 rounded-full bg-zinc-950 border border-white/[0.08] overflow-hidden">
+                <div className="relative h-2.5 rounded-full bg-zinc-950 border border-white/[0.08] overflow-hidden">
                   <div className="absolute inset-y-0 left-0 w-[12%] bg-rose-500/25 border-r border-rose-400/40" />
                   <div className="absolute inset-y-0 right-0 w-[12%] bg-rose-500/25 border-l border-rose-400/40" />
                   <div
@@ -455,63 +751,18 @@ export function App() {
                 </div>
 
                 <div className="flex justify-between text-[11px] font-mono text-zinc-400">
-                  <span>SL ${gridBot.slTriggerPx.toFixed(2)}</span>
+                  <span>SL ${formatPrice(gridBot.slTriggerPx)}</span>
                   <span className="text-zinc-200">
-                    Min ${gridBot.minPx.toFixed(3)}
+                    Min ${formatPrice(gridBot.minPx)}
                   </span>
                   <span className="text-white font-semibold">
-                    ${b1.market.lastPx.toFixed(3)}
+                    ${formatPrice(b1.market.lastPx)}
                   </span>
                   <span className="text-zinc-200">
-                    Max ${gridBot.maxPx.toFixed(3)}
+                    Max ${formatPrice(gridBot.maxPx)}
                   </span>
-                  <span>TP ${gridBot.tpTriggerPx.toFixed(2)}</span>
+                  <span>TP ${formatPrice(gridBot.tpTriggerPx)}</span>
                 </div>
-              </div>
-
-              {/* 12 Grid Levels */}
-              <div className="grid grid-cols-6 sm:grid-cols-13 gap-1">
-                {b2.gridPlan.gridLevels.map((lvl, idx) => {
-                  const isAsk = lvl > b1.market.lastPx;
-                  const isClosest =
-                    Math.abs(lvl - b1.market.lastPx) <=
-                    b2.gridPlan.gridStepUsdt * 0.6;
-                  return (
-                    <div
-                      key={idx}
-                      className={cn(
-                        'py-1.5 px-1 rounded text-[10px] font-mono border text-center',
-                        isClosest
-                          ? 'bg-white/[0.16] border-white/40 text-white font-bold'
-                          : isAsk
-                          ? 'bg-rose-500/[0.05] border-rose-500/20 text-rose-300'
-                          : 'bg-emerald-500/[0.05] border-emerald-500/20 text-emerald-300'
-                      )}
-                    >
-                      {lvl.toFixed(2)}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Surgery History */}
-              <div className="glass-well rounded-lg px-3 py-2 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400 flex items-center gap-1.5">
-                  <Wrench className="size-3.5 text-zinc-300" />
-                  Amendments: <strong className="text-white">{gridBot.amendCount}</strong>
-                </span>
-                {state.surgeryHistory[0] ? (
-                  <span className="text-zinc-300 truncate ml-2">
-                    Last: [{state.surgeryHistory[0].previousMinPx.toFixed(2)},{' '}
-                    {state.surgeryHistory[0].previousMaxPx.toFixed(2)}] →{' '}
-                    <strong className="text-emerald-300">
-                      [{state.surgeryHistory[0].newMinPx.toFixed(2)},{' '}
-                      {state.surgeryHistory[0].newMaxPx.toFixed(2)}]
-                    </strong>
-                  </span>
-                ) : (
-                  <span className="text-zinc-500">No corridor shift needed</span>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -557,7 +808,9 @@ export function App() {
                   </div>
                   <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                     <span>S_retail: {b1.sentiment.sRetail.toFixed(2)}</span>
-                    <span>{(b1.sentiment.bearishRatio * 100).toFixed(0)}% Bear</span>
+                    <span>
+                      {(b1.sentiment.bearishRatio * 100).toFixed(0)}% Bear
+                    </span>
                   </div>
                 </div>
 
@@ -665,7 +918,7 @@ export function App() {
 
             <CardContent className="p-4 gap-1.5">
               <div className="flex flex-col gap-1.5 max-h-[250px] overflow-y-auto pr-1">
-                {filteredCliHistory.slice(0, 15).map((rec) => {
+                {filteredCliHistory.slice(0, 16).map((rec) => {
                   const isExpanded = expandedCliId === rec.id;
                   const isOk = rec.exitCode === 0;
                   return (
@@ -720,7 +973,7 @@ export function App() {
             </CardContent>
           </Card>
 
-          {/* PANEL 4: TREASURY & AVALANCHE ERC-8004 */}
+          {/* PANEL 4: TREASURY & AVALANCHE CHAIN */}
           <Card>
             <CardHeader className="py-3 px-4">
               <CardTitle>
@@ -728,14 +981,12 @@ export function App() {
                 Treasury & Avalanche Chain
               </CardTitle>
               <div className="flex items-center gap-1.5">
-                <a
-                  href="https://testnet.snowtrace.io/tx/0x1b31a49f0cd1722b24a536bd9cfcc33ae75cad015887abd530cbd196d2769804"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="metal-badge px-2 py-0.5 rounded text-[10px] font-mono text-emerald-300 hover:text-white flex items-center gap-1"
-                >
-                  NFT #257 <ExternalLink className="size-2.5" />
-                </a>
+                {finalityMs > 0 && (
+                  <Badge variant="emerald">
+                    <Zap className="size-2.5 mr-1 inline" />
+                    Finality {finalityMs}ms
+                  </Badge>
+                )}
                 <Badge variant="outline">
                   Fuji #{b4.operatorWallet.latestBlockNumber}
                 </Badge>
@@ -743,7 +994,7 @@ export function App() {
             </CardHeader>
 
             <CardContent className="p-4 gap-3">
-              {/* 4 Portfolio Balances */}
+              {/* 4 Portfolio Balances + Live Earn Actions */}
               <div className="grid grid-cols-4 gap-2">
                 <div className="glass-subcard rounded-lg p-2.5 flex flex-col">
                   <span className="text-[10px] font-mono text-zinc-500">
@@ -779,7 +1030,34 @@ export function App() {
                 </div>
               </div>
 
-              {/* 3 Ava Labs Registries Row */}
+              {/* 1-Click Live OKX Earn Transfer Bar ($1.00 Real Execution) */}
+              <div className="flex items-center justify-between gap-2 glass-subcard rounded-lg px-3 py-2 font-mono text-xs">
+                <span className="text-zinc-400 text-[11px]">
+                  Live OKX Simple Earn ($1 USDT):
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={runningAction !== null}
+                    onClick={() => triggerLiveAction('EARN_SWEEP')}
+                    className="metal-btn px-2.5 py-1 rounded text-[11px] text-emerald-300 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <ArrowUpRight className="size-3" />
+                    <span>Sweep $1 → Earn</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={runningAction !== null}
+                    onClick={() => triggerLiveAction('EARN_REDEEM')}
+                    className="metal-btn px-2.5 py-1 rounded text-[11px] text-zinc-200 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <ArrowDownLeft className="size-3" />
+                    <span>Redeem $1</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Ava Labs Registries Row (Live Read-Back from Fuji) */}
               {b4.erc8004Passport && (
                 <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
                   <a
@@ -796,17 +1074,17 @@ export function App() {
                     </span>
                   </a>
                   <a
-                    href="https://testnet.snowtrace.io/address/0xffe3478342c44f82cb1690638c162716e8648290"
+                    href="https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd"
                     target="_blank"
                     rel="noreferrer"
                     className="glass-subcard rounded-lg p-2.5 hover:border-white/25 transition flex flex-col"
                   >
                     <span className="text-[9px] text-zinc-500 flex items-center justify-between">
-                      VALIDATION <ExternalLink className="size-2.5" />
+                      ON-CHAIN PROOFS <ExternalLink className="size-2.5" />
                     </span>
                     <span className="text-zinc-100 font-semibold mt-0.5">
                       {b4.erc8004Passport.validationRegistry.totalValidatedTasks}{' '}
-                      Proofs
+                      Anchored
                     </span>
                   </a>
                   <a

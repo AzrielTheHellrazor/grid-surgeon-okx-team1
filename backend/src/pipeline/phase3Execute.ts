@@ -11,8 +11,8 @@ import {
 
 /**
  * BORDER 3: PHASE 3 AUTONOMOUS OKX ATK EXECUTION & LIVE ACCOUNT SYNC
- * Queries real live OKX account balances, active grid bots, open positions, Simple Earn balances,
- * and exchange-computed liquidation prices via `@okx_ai/okx-trade-cli` (Zero Mock Data).
+ * Queries real live OKX account balances, active grid bots, open positions, position history,
+ * Simple Earn balances, and exchange-computed liquidation prices via `@okx_ai/okx-trade-cli` (Zero Mock Data).
  */
 export async function runPhase3Execute(
   sense: Phase1SenseOutput,
@@ -26,77 +26,97 @@ export async function runPhase3Execute(
   const lastPx = sense.market.lastPx;
   const plan = brain.gridPlan;
 
-  // 1. Query real live OKX account balances, Simple Earn, active grid bots, positions, and liquidation price
-  const [balanceRes, earnBalRes, gridOrdersRes, positionsRes, liqRes] =
-    await Promise.all([
-      runOkxCli<Record<string, unknown>>({
-        args: ['account', 'balance-all', '--json'],
-        phase: 'BORDER_3_EXECUTE',
-        skill: 'okx-cex-portfolio',
-      }),
-      runOkxCli<Array<Record<string, string>>>({
-        args: ['earn', 'savings', 'balance', '--json'],
-        phase: 'BORDER_3_EXECUTE',
-        skill: 'okx-cex-earn',
-      }),
-      runOkxCli<Array<Record<string, string>>>({
-        args: [
-          'bot',
-          'grid',
-          'orders',
-          '--algoOrdType',
-          'contract_grid',
-          '--instId',
-          sense.instId,
-          '--json',
-        ],
-        phase: 'BORDER_3_EXECUTE',
-        skill: 'okx-cex-bot',
-      }),
-      runOkxCli<Array<Record<string, string>>>({
-        args: [
-          'account',
-          'positions',
-          '--instType',
-          'SWAP',
-          '--instId',
-          sense.instId,
-          '--json',
-        ],
-        phase: 'BORDER_3_EXECUTE',
-        skill: 'okx-cex-portfolio',
-      }),
-      runOkxCli<Array<Record<string, string>>>({
-        args: [
-          'bot',
-          'grid',
-          'liquidate-price',
-          '--instId',
-          sense.instId,
-          '--sz',
-          '100',
-          '--lever',
-          String(plan.leverage),
-          '--minPx',
-          String(plan.minPx),
-          '--maxPx',
-          String(plan.maxPx),
-          '--gridNum',
-          String(plan.gridNum),
-          '--direction',
-          'neutral',
-          '--json',
-        ],
-        phase: 'BORDER_3_EXECUTE',
-        skill: 'okx-cex-bot',
-      }),
-    ]);
+  // 1. Query real live OKX account balances, Simple Earn, active grid bots, positions, position history, and liquidation price
+  const [
+    balanceRes,
+    earnBalRes,
+    gridOrdersRes,
+    positionsRes,
+    posHistRes,
+    liqRes,
+  ] = await Promise.all([
+    runOkxCli<Record<string, unknown>>({
+      args: ['account', 'balance-all', '--json'],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: ['earn', 'savings', 'balance', '--json'],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-earn',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'bot',
+        'grid',
+        'orders',
+        '--algoOrdType',
+        'contract_grid',
+        '--instId',
+        sense.instId,
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-bot',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'account',
+        'positions',
+        '--instType',
+        'SWAP',
+        '--instId',
+        sense.instId,
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'account',
+        'positions-history',
+        '--instType',
+        'SWAP',
+        '--limit',
+        '10',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    }),
+    runOkxCli<Array<Record<string, string>>>({
+      args: [
+        'bot',
+        'grid',
+        'liquidate-price',
+        '--instId',
+        sense.instId,
+        '--sz',
+        '100',
+        '--lever',
+        String(plan.leverage),
+        '--minPx',
+        String(plan.minPx),
+        '--maxPx',
+        String(plan.maxPx),
+        '--gridNum',
+        String(plan.gridNum),
+        '--direction',
+        'neutral',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-bot',
+    }),
+  ]);
 
   cliRecords.push(
     balanceRes.record,
     earnBalRes.record,
     gridOrdersRes.record,
     positionsRes.record,
+    posHistRes.record,
     liqRes.record
   );
 
@@ -129,6 +149,20 @@ export async function runPhase3Execute(
     }
   }
 
+  // 4. Parse REAL Realized PnL from closed positions + active grid bots
+  let realHistPnl = 0;
+  if (Array.isArray(posHistRes.data)) {
+    for (const row of posHistRes.data) {
+      realHistPnl += Number(row.realizedPnl || row.pnl || 0);
+    }
+  }
+
+  const liveGridOrders = Array.isArray(gridOrdersRes.data)
+    ? gridOrdersRes.data
+    : [];
+  const firstLiveGrid = liveGridOrders.length > 0 ? liveGridOrders[0] : null;
+  const gridRealizedPnl = Number(firstLiveGrid?.gridProfit || 0);
+
   const totalNav =
     realTotalValuation > 0
       ? realTotalValuation
@@ -139,12 +173,15 @@ export async function runPhase3Execute(
   state.treasury.lockedSimpleEarnUsdt = Number(realEarnUsdt.toFixed(2));
   state.treasury.simpleEarnApyPct = realEarnApy;
   state.treasury.totalNavUsdt = Number(totalNav.toFixed(2));
+  state.treasury.cumulativeRealizedPnlUsdt = Number(
+    (realHistPnl + gridRealizedPnl).toFixed(2)
+  );
   state.treasury.highWaterMarkNavUsdt = Math.max(
     state.treasury.highWaterMarkNavUsdt,
     state.treasury.totalNavUsdt
   );
 
-  // 4. Parse REAL Liquidation Price from OKX CLI (`okx bot grid liquidate-price`)
+  // 5. Parse REAL Liquidation Price from OKX CLI (`okx bot grid liquidate-price`)
   const liqRow =
     Array.isArray(liqRes.data) && liqRes.data[0] ? liqRes.data[0] : null;
   const realLongLiqPx = Number(liqRow?.longLiqPx || 0);
@@ -153,12 +190,7 @@ export async function runPhase3Execute(
       ? realLongLiqPx
       : plan.estimatedLiquidationPx;
 
-  // 5. Parse REAL Active Grid Bot from `okx bot grid orders`
-  const liveGridOrders = Array.isArray(gridOrdersRes.data)
-    ? gridOrdersRes.data
-    : [];
-  const firstLiveGrid = liveGridOrders.length > 0 ? liveGridOrders[0] : null;
-
+  // 6. Parse REAL Active Grid Bot from `okx bot grid orders`
   let latestSurgery: GridSurgeryEvent | null = null;
   const latestProfitSweep: ProfitSweepEvent | null = null;
 
@@ -179,7 +211,7 @@ export async function runPhase3Execute(
       slTriggerPx: Number(firstLiveGrid.slTriggerPx || plan.slTriggerPx),
       liquidationPx: verifiedLiqPx,
       unrealizedPnlUsdt: Number(firstLiveGrid.floatProfit || 0),
-      gridProfitUsdt: Number(firstLiveGrid.gridProfit || 0),
+      gridProfitUsdt: gridRealizedPnl,
       amendCount: state.activeGridBot?.amendCount || 0,
       createdAt: firstLiveGrid.cTime
         ? new Date(Number(firstLiveGrid.cTime)).toISOString()
@@ -291,9 +323,9 @@ export async function runPhase3Execute(
       completedAt: new Date(completedAtMs).toISOString(),
       inputContract: 'Phase2BrainOutput + PersistedSurgeonState',
       outputContract:
-        'Phase3ExecuteOutput (Live OKX Balances, Grid Orders, Positions & LiqPx)',
+        'Phase3ExecuteOutput (Live OKX Balances, Grid Orders, Positions, History & LiqPx)',
       GuaranteeNote:
-        '100% Live OKX CLI queries (account balance-all, earn savings balance, bot grid orders, liquidate-price, positions) — Zero Mock Data.',
+        '100% Live OKX CLI queries (account balance-all, earn savings balance, bot grid orders, liquidate-price, positions, positions-history) — Zero Mock Data.',
     },
     executionMode: 'LIVE_AUTHENTICATED',
     actionExecuted,
@@ -304,5 +336,186 @@ export async function runPhase3Execute(
     latestProfitSweep,
     treasury: { ...state.treasury },
     cliRecords,
+  };
+}
+
+/**
+ * Executes a real live user-initiated OKX CLI command (Earn Sweep, Earn Redeem, or Grid Bot Deploy/Amend)
+ */
+export async function executeLiveOkxAction(
+  actionType: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY',
+  state: PersistedSurgeonState
+): Promise<{ ok: boolean; summary: string; records: CliExecutionRecord[] }> {
+  const records: CliExecutionRecord[] = [];
+  const instId = state.selectedInstId || 'AVAX-USDT-SWAP';
+  const grid = state.activeGridBot;
+
+  if (actionType === 'EARN_SWEEP') {
+    const transferRes = await runOkxCli({
+      args: [
+        'account',
+        'transfer',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--from',
+        '18',
+        '--to',
+        '6',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    });
+    records.push(transferRes.record);
+
+    const earnRes = await runOkxCli({
+      args: [
+        'earn',
+        'savings',
+        'purchase',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--rate',
+        '0.01',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-earn',
+    });
+    records.push(earnRes.record);
+
+    return {
+      ok: transferRes.success || earnRes.success,
+      summary: earnRes.success
+        ? 'Swept $1.00 USDT (Trading 18 → Funding 6 → Simple Earn)'
+        : transferRes.record.summary,
+      records,
+    };
+  }
+
+  if (actionType === 'EARN_REDEEM') {
+    const redeemRes = await runOkxCli({
+      args: [
+        'earn',
+        'savings',
+        'redeem',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-earn',
+    });
+    records.push(redeemRes.record);
+
+    const transferBackRes = await runOkxCli({
+      args: [
+        'account',
+        'transfer',
+        '--ccy',
+        'USDT',
+        '--amt',
+        '1',
+        '--from',
+        '6',
+        '--to',
+        '18',
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-portfolio',
+    });
+    records.push(transferBackRes.record);
+
+    return {
+      ok: redeemRes.success || transferBackRes.success,
+      summary: transferBackRes.success
+        ? 'Redeemed $1.00 USDT (Simple Earn → Funding 6 → Trading 18)'
+        : redeemRes.record.summary,
+      records,
+    };
+  }
+
+  // GRID_DEPLOY (or Amend if active grid exists)
+  if (
+    grid &&
+    grid.algoId &&
+    grid.algoId !== 'NO_ACTIVE_BOT' &&
+    grid.algoId !== 'NONE'
+  ) {
+    const amendRes = await runOkxCli({
+      args: [
+        'bot',
+        'grid',
+        'amend',
+        '--algoId',
+        grid.algoId,
+        '--minPx',
+        String(grid.minPx),
+        '--maxPx',
+        String(grid.maxPx),
+        '--gridNum',
+        String(grid.gridNum),
+        '--instId',
+        instId,
+        '--tpTriggerPx',
+        String(grid.tpTriggerPx),
+        '--slTriggerPx',
+        String(grid.slTriggerPx),
+        '--json',
+      ],
+      phase: 'BORDER_3_EXECUTE',
+      skill: 'okx-cex-bot',
+    });
+    records.push(amendRes.record);
+    return {
+      ok: amendRes.success,
+      summary: amendRes.record.summary,
+      records,
+    };
+  }
+
+  const createRes = await runOkxCli({
+    args: [
+      'bot',
+      'grid',
+      'create',
+      '--instId',
+      instId,
+      '--algoOrdType',
+      'contract_grid',
+      '--minPx',
+      String(grid.minPx),
+      '--maxPx',
+      String(grid.maxPx),
+      '--gridNum',
+      String(grid.gridNum || 12),
+      '--direction',
+      'neutral',
+      '--lever',
+      String(grid.leverage || 3),
+      '--sz',
+      String(Math.max(1, Number(state.treasury.tradingAccountUsdt.toFixed(2)))),
+      '--tpTriggerPx',
+      String(grid.tpTriggerPx),
+      '--slTriggerPx',
+      String(grid.slTriggerPx),
+      '--json',
+    ],
+    phase: 'BORDER_3_EXECUTE',
+    skill: 'okx-cex-bot',
+  });
+  records.push(createRes.record);
+
+  return {
+    ok: createRes.success,
+    summary: createRes.record.summary,
+    records,
   };
 }

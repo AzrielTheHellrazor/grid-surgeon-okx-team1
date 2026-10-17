@@ -7,8 +7,7 @@ import {
   ScenarioMode,
 } from './types';
 
-const INST_ID = 'AVAX-USDT-SWAP';
-const SPOT_INST_ID = 'AVAX-USDT';
+const DEFAULT_INST_ID = 'AVAX-USDT-SWAP';
 
 /**
  * BORDER 1: PHASE 1 MULTI-MODAL SENSING
@@ -16,8 +15,12 @@ const SPOT_INST_ID = 'AVAX-USDT';
  * Guarantees a 100% valid, schema-verified `Phase1SenseOutput` under all conditions.
  */
 export async function runPhase1Sense(
-  scenario: ScenarioMode = 'LIVE'
+  scenario: ScenarioMode = 'LIVE',
+  instId: string = DEFAULT_INST_ID
 ): Promise<Phase1SenseOutput> {
+  const activeInstId = instId || DEFAULT_INST_ID;
+  const baseCcy = activeInstId.split('-')[0] || 'AVAX';
+  const spotInstId = `${baseCcy}-USDT`;
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const cliRecords: CliExecutionRecord[] = [];
@@ -33,32 +36,32 @@ export async function runPhase1Sense(
     oiChangeRes,
   ] = await Promise.all([
     runOkxCli<Array<Record<string, string>>>({
-      args: ['market', 'ticker', INST_ID, '--json'],
+      args: ['market', 'ticker', activeInstId, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<string[]>>({
-      args: ['market', 'candles', INST_ID, '--bar', '1H', '--limit', '50', '--json'],
+      args: ['market', 'candles', activeInstId, '--bar', '1H', '--limit', '50', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, unknown>>>({
-      args: ['market', 'indicator', 'rsi', INST_ID, '--bar', '1H', '--json'],
+      args: ['market', 'indicator', 'rsi', activeInstId, '--bar', '1H', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, unknown>>>({
-      args: ['market', 'indicator', 'bb', INST_ID, '--bar', '1H', '--json'],
+      args: ['market', 'indicator', 'bb', activeInstId, '--bar', '1H', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, string>>>({
-      args: ['market', 'funding-rate', INST_ID, '--json'],
+      args: ['market', 'funding-rate', activeInstId, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<{ instId: string; bar: string; rows: Array<Record<string, string>> }>>({
-      args: ['market', 'oi-history', INST_ID, '--bar', '1H', '--limit', '24', '--json'],
+      args: ['market', 'oi-history', activeInstId, '--bar', '1H', '--limit', '24', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
@@ -152,14 +155,15 @@ export async function runPhase1Sense(
   );
 
   // Execute authenticated OKX CLI sensors (Sentiment, SmartMoney, Economic Calendar)
+  const coinPairArg = baseCcy === 'BTC' ? 'BTC,AVAX' : `${baseCcy},BTC`;
   const [sentimentRes, smartMoneyRes, calendarRes] = await Promise.all([
     runOkxCli<unknown>({
-      args: ['news', 'coin-sentiment', '--coins', 'AVAX,BTC', '--json'],
+      args: ['news', 'coin-sentiment', '--coins', coinPairArg, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-sentiment-tracker',
     }),
     runOkxCli<unknown>({
-      args: ['smartmoney', 'signal-overview-by-filter', '--instCcyList', 'AVAX,BTC', '--json'],
+      args: ['smartmoney', 'signal-overview-by-filter', '--instCcyList', coinPairArg, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-smartmoney',
     }),
@@ -194,7 +198,7 @@ export async function runPhase1Sense(
   const sentimentSource: DataSourceTag = sentimentRes.success
     ? 'LIVE_OKX_CLI'
     : 'DERIVED_FROM_LIVE_OKX';
-  const headlineSummary = `Live OKX ${INST_ID}: $${lastPx.toFixed(4)} | RSI(14)=${rsi14.toFixed(1)} | 1H OI Δ=${oiDelta1hPct.toFixed(2)}%`;
+  const headlineSummary = `Live OKX ${activeInstId}: $${lastPx.toFixed(4)} | RSI(14)=${rsi14.toFixed(1)} | 1H OI Δ=${oiDelta1hPct.toFixed(2)}%`;
 
   const extractedWhales = smartMoneyRes.success
     ? extractCliSmartMoney(smartMoneyRes.data)
@@ -264,14 +268,14 @@ export async function runPhase1Sense(
       durationMs: Math.max(1, completedAtMs - startedAtMs),
       startedAt,
       completedAt: new Date(completedAtMs).toISOString(),
-      inputContract: `ScenarioMode(${scenario}) + InstId(${INST_ID})`,
+      inputContract: `ScenarioMode(${scenario}) + InstId(${activeInstId})`,
       outputContract: 'Phase1SenseOutput (Verified Market, BB/RSI/ATR/ADX, Sentiment, Whale & Macro)',
       GuaranteeNote:
-        'All 9 OKX CLI feeds wrapped in 8s timeout boundaries with deterministic 50-candle ATR/ADX/RSI/BB verification.',
+        'All 10 OKX CLI feeds wrapped in 8s timeout boundaries with deterministic 50-candle ATR/ADX/RSI/BB verification.',
     },
     scenario,
-    instId: INST_ID,
-    spotInstId: SPOT_INST_ID,
+    instId: activeInstId,
+    spotInstId,
     market: {
       lastPx,
       askPx,
@@ -314,7 +318,7 @@ export async function runPhase1Sense(
       source: smartMoneySource,
     },
     macroCalendar,
-    candles: candles.slice(-30),
+    candles: candles.slice(-48),
     cliRecords,
   };
 }
