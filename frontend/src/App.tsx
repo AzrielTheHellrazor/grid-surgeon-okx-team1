@@ -198,7 +198,7 @@ function GridCandleChart({
           {
             id: 'VWAP',
             px: entryFillPx,
-            text: `MALIYET $${entryFillPx.toFixed(3)}`,
+            text: `VWAP $${entryFillPx.toFixed(3)}`,
             stroke: '#fbbf24',
             fill: 'rgba(120,53,15,0.82)',
             textColor: '#fde68a',
@@ -208,7 +208,7 @@ function GridCandleChart({
     {
       id: 'LAST',
       px: lastPx,
-      text: `FIYAT $${lastPx.toFixed(3)}`,
+      text: `LAST $${lastPx.toFixed(3)}`,
       stroke: 'rgba(255,255,255,0.65)',
       fill: 'rgba(39,39,42,0.92)',
       textColor: '#ffffff',
@@ -919,65 +919,65 @@ export function App() {
             <div className="flex items-center gap-2.5 text-xs leading-relaxed text-zinc-200 min-w-0 flex-1">
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-400/35 text-emerald-300 font-mono text-[10px] font-semibold shrink-0">
                 <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
-                CANLI OTONOM ANLATICI
+                LIVE AGENT NARRATOR
               </span>
               <span className="text-zinc-200">
                 {gridBot?.avaxInventory && gridBot.avaxInventory >= 0.05 ? (
                   <>
-                    <strong className="text-white">Grid-Surgeon</strong> şu an gerçek OKX hesabında (
+                    <strong className="text-white">Grid-Surgeon</strong> is trading live on a real OKX account (
                     <strong className="text-emerald-300">
                       ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
                     </strong>
-                    ) otonom çalışıyor: Cüzdanda{' '}
+                    ): Holding{' '}
                     <strong className="text-amber-300">
                       {gridBot.avaxInventory.toFixed(2)} {b1.instId.split('-')[0]}
                     </strong>{' '}
-                    (ort. alış maliyeti{' '}
+                    (avg cost{' '}
                     <strong className="text-amber-300">
                       ${(gridBot.entryFillPx || b1.market.lastPx).toFixed(3)}
                     </strong>
-                    ) tutuyor; piyasa fiyatı{' '}
+                    ) while market is{' '}
                     <strong className="text-white">
                       ${formatPrice(b1.market.lastPx)}
-                    </strong>{' '}
-                    iken net kârla çıkmak için{' '}
+                    </strong>
+                    ; waiting to harvest profit via split sell orders at{' '}
                     <strong className="text-emerald-300">
                       T1 ${gridBot.activeOrderPx?.toFixed(3)}
                     </strong>
                     {gridBot.tranche2OrderPx ? (
                       <>
                         {' '}
-                        ve{' '}
+                        and{' '}
                         <strong className="text-emerald-300">
                           T2 ${gridBot.tranche2OrderPx.toFixed(3)}
                         </strong>
                       </>
                     ) : null}{' '}
-                    seviyelerinde satış emri bekliyor ve her kararını{' '}
+                    and anchoring every cycle on{' '}
                     <strong className="text-amber-300">
                       Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
-                    </strong>{' '}
-                    zincirine mühürlüyor.
+                    </strong>
+                    .
                   </>
                 ) : (
                   <>
-                    <strong className="text-white">Grid-Surgeon</strong> şu an gerçek OKX hesabında (
+                    <strong className="text-white">Grid-Surgeon</strong> is trading live on a real OKX account (
                     <strong className="text-emerald-300">
                       ${b3.treasury.totalNavUsdt.toFixed(2)} USDT
                     </strong>
-                    ) otonom çalışıyor:{' '}
+                    ): Tracking{' '}
                     <strong className="text-white">{b1.instId.split('-')[0]}</strong>{' '}
-                    fiyatını (<strong className="text-white">${formatPrice(b1.market.lastPx)}</strong>)
-                    1 dakikalık volatilite koridorunda izliyor, balina/bireysel tuzak skoru{' '}
+                    at <strong className="text-white">${formatPrice(b1.market.lastPx)}</strong>{' '}
+                    inside its 1m volatility corridor, scanning Whale/Retail trap score{' '}
                     <strong className="text-emerald-300">
                       D_trap {b2.formulas.dTrap >= 0 ? '+' : ''}
                       {b2.formulas.dTrap.toFixed(2)}
-                    </strong>{' '}
-                    ile giriş kolluyor ve her kararını{' '}
+                    </strong>
+                    , and anchoring every decision on{' '}
                     <strong className="text-amber-300">
                       Avalanche Fuji (#{b4.operatorWallet.latestBlockNumber})
-                    </strong>{' '}
-                    zincirine mühürlüyor.
+                    </strong>
+                    .
                   </>
                 )}
               </span>
@@ -993,7 +993,7 @@ export function App() {
                   : 'text-zinc-200'
               )}
             >
-              <span>{showGuide ? 'Rehberi Kapat ×' : '? Bu Ekran Nedir (4 Adım)'}</span>
+              <span>{showGuide ? 'Close Guide ×' : '? How It Works (4-Step Guide)'}</span>
             </button>
           </div>
 
@@ -1001,34 +1001,34 @@ export function App() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 pt-1.5 border-t border-white/[0.08] text-[11px] text-zinc-300">
               <div className="glass-well rounded-lg p-2.5">
                 <div className="font-mono font-semibold text-emerald-300 mb-0.5">
-                  1. Canlı Emir & Koridor Cerrahisi
+                  1. Live Order Corridor & Surgery
                 </div>
                 <p className="text-zinc-400 leading-snug">
-                  Fiyat koridorun dışına taşarsa botu kapatıp zarar yazmak yerine OKX CLI ile açık emirleri ve koridoru canlı kaydırır. Sarı çizgi alış maliyetini (MALIYET), yeşil çizgiler kâr-al satış emirlerini (T1/T2 SELL) gösterir.
+                  When price drifts near grid edges, the agent shifts the corridor in-flight via OKX CLI instead of closing at a loss. Amber line is VWAP entry cost; green lines are active T1/T2 take-profit sell orders.
                 </p>
               </div>
               <div className="glass-well rounded-lg p-2.5">
                 <div className="font-mono font-semibold text-rose-300 mb-0.5">
-                  2. Balina vs Küçük Yatırımcı Radarı
+                  2. Whale vs Retail Trap Radar
                 </div>
                 <p className="text-zinc-400 leading-snug">
-                  Küçük yatırımcı coşkusu (Retail) ile balina pozisyonlarını (Smart Money) karşılaştırır. D_trap skoru +1.10 üstüne çıkarsa Boğa Tuzağı (Bull Trap) algılayıp alımları durdurur.
+                  Contrasts retail crowd sentiment against Smart Money whale positioning. If D_trap exceeds +1.10 (Bull Trap), the agent blocks new spot buy entries to avoid buying into whale distribution.
                 </p>
               </div>
               <div className="glass-well rounded-lg p-2.5">
                 <div className="font-mono font-semibold text-sky-300 mb-0.5">
-                  3. Gerçek OKX CLI Kanıt Akışı
+                  3. Live OKX CLI Proof Stream
                 </div>
                 <p className="text-zinc-400 leading-snug">
-                  Simülasyon veya sahte veri yoktur. Ajanın arka planda çalıştırdığı her gerçek <code className="text-zinc-200">okx ... --json</code> terminal komutu ve borsa yanıtı milisaniyesiyle burada listelenir.
+                  Zero mock data. Every real <code className="text-zinc-200">okx ... --json</code> command executed by the backend and its raw exchange response is streamed here with exact millisecond latency.
                 </p>
               </div>
               <div className="glass-well rounded-lg p-2.5">
                 <div className="font-mono font-semibold text-amber-300 mb-0.5">
-                  4. Kâr Kasası & Avalanche Zincir Mührü
+                  4. Yield Vault & Avalanche Seal
                 </div>
                 <p className="text-zinc-400 leading-snug">
-                  Kâr edilen USDT&apos;yi otonom olarak OKX Simple Earn faiz kasasına kilitler; her kararın kriptografik özetini (keccak256) Avalanche Fuji C-Chain üzerindeki doğrulanmış kontratlara yazar.
+                  Sweeps realized USDT profits into OKX Simple Earn and anchors a cryptographic <code className="text-zinc-200">keccak256</code> proof of every cycle to verified smart contracts on Avalanche Fuji C-Chain.
                 </p>
               </div>
             </div>
@@ -1068,19 +1068,19 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Activity className="size-4 text-emerald-400" />
-                1. Canlı Emir Koridoru ({b1.instId})
+                1. Live Order Corridor ({b1.instId})
               </CardTitle>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant="outline">#{gridBot.algoId.slice(-6)}</Badge>
                 <Badge variant="emerald">
                   {gridBot.pingPongPhase === 'HARVESTING_EXIT'
-                    ? 'KÂR SATIŞI BEKLİYOR'
-                    : 'ALIŞ FIRSATI BEKLİYOR'}
+                    ? 'HARVESTING SELL'
+                    : 'SEEKING BUY'}
                 </Badge>
                 <Badge variant="amber">
                   {(gridBot?.avaxInventory || 0).toFixed(2)}{' '}
                   {b1.instId.split('-')[0]} @ $
-                  {(gridBot?.entryFillPx || b1.market.lastPx).toFixed(3)} • Tur:{' '}
+                  {(gridBot?.entryFillPx || b1.market.lastPx).toFixed(3)} • RT:{' '}
                   {gridBot?.roundTripsCompleted ?? 0}
                 </Badge>
                 <button
@@ -1112,40 +1112,40 @@ export function App() {
             </CardHeader>
 
             <CardContent className="p-4 gap-2.5">
-              {/* 5 Compact Indicators (Zero truncation + Turkish explanations on hover) */}
+              {/* 5 Compact Indicators (Zero truncation + English explanations on hover) */}
               <div className="grid grid-cols-5 gap-2">
                 {[
                   {
-                    k: 'ATR (Oynaklık)',
+                    k: 'ATR(14) Vol',
                     v: `$${formatPrice(b1.technicals.atr14)}`,
-                    hint: 'Ortalama Gerçek Aralık (14 bar): Mum başına ortalama fiyat oynaklığı',
+                    hint: 'Average True Range (14 bars): Average price volatility per candle',
                   },
                   {
-                    k: 'ADX (Trend)',
+                    k: 'ADX(14) Trend',
                     v: b1.technicals.adx14.toFixed(1),
-                    hint: 'Trend Gücü (<25 yatay koridor piyasası, >25 güçlü kırılım trendi)',
+                    hint: 'Trend Strength (<25 ranging grid regime, >25 strong directional trend)',
                   },
                   {
-                    k: 'RSI (Momentum)',
+                    k: 'RSI(14) Mom',
                     v: b1.technicals.rsi14.toFixed(1),
-                    hint: 'Göreceli Güç Endeksi (<30 aşırı satım, >70 aşırı alım)',
+                    hint: 'Relative Strength Index (<30 oversold, >70 overbought)',
                   },
                   {
-                    k: 'Tahta Dengesi',
+                    k: 'Book Skew (OBI)',
                     v: `${(b1.market.orderbookImbalance ?? 0) >= 0 ? '+' : ''}${((b1.market.orderbookImbalance ?? 0) * 100).toFixed(1)}%`,
                     c:
                       (b1.market.orderbookImbalance ?? 0) >= 0
                         ? 'text-emerald-400'
                         : 'text-rose-400',
-                    hint: 'OKX Emir Defteri İlk 10 Kademe Alıcı/Satıcı Baskısı (OBI)',
+                    hint: 'Top-10 Level Order Book Imbalance (Positive = Bid Heavy, Negative = Ask Heavy)',
                   },
                   {
-                    k: gridBot?.tranche2OrderPx ? 'T1 / T2 Satış' : 'Aktif Emir',
+                    k: gridBot?.tranche2OrderPx ? 'T1 / T2 Target' : 'Active Order',
                     v: gridBot?.tranche2OrderPx
                       ? `$${gridBot.activeOrderPx?.toFixed(3)}/$${gridBot.tranche2OrderPx.toFixed(3)}`
                       : `$${formatPrice(gridBot.activeOrderPx || b2.gridPlan.optimalBuyPx || gridBot.minPx)}`,
                     c: 'text-emerald-300 text-[11px]',
-                    hint: 'OKX üzerinde şu an açık bekleyen gerçek kademeli satış/alış emir fiyatları',
+                    hint: 'Live 2-Tranche Take-Profit Sell Orders currently open on OKX',
                   },
                 ].map((m) => (
                   <div
@@ -1190,7 +1190,7 @@ export function App() {
               <div className="glass-subcard rounded-xl p-2.5 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-zinc-400">
-                    Koridor Konumu:{' '}
+                    Corridor Position:{' '}
                     <strong className="text-white">{corridorPct}%</strong>
                   </span>
                   <span
@@ -1202,8 +1202,8 @@ export function App() {
                     )}
                   >
                     {b2.gridPlan.requiresInFlightSurgery
-                      ? 'OTONOM KORİDOR KAYDIRMA AKTİF (AMEND)'
-                      : 'GÜVENLİ KORİDOR İÇİNDE [12%–88%]'}
+                      ? 'IN-FLIGHT SURGERY ACTIVE (AMEND)'
+                      : 'SAFE CORRIDOR [12%–88%]'}
                   </span>
                 </div>
 
@@ -1217,17 +1217,17 @@ export function App() {
                 </div>
 
                 <div className="flex justify-between text-[11px] font-mono text-zinc-400">
-                  <span>Alt Koridor ${formatPrice(gridBot.slTriggerPx)}</span>
+                  <span>Grid Min ${formatPrice(gridBot.slTriggerPx)}</span>
                   <span className="text-zinc-200">
-                    Min ${formatPrice(gridBot.minPx)}
+                    Lower ${formatPrice(gridBot.minPx)}
                   </span>
                   <span className="text-white font-semibold">
-                    Anlık ${formatPrice(b1.market.lastPx)}
+                    Last ${formatPrice(b1.market.lastPx)}
                   </span>
                   <span className="text-zinc-200">
-                    Max ${formatPrice(gridBot.maxPx)}
+                    Upper ${formatPrice(gridBot.maxPx)}
                   </span>
-                  <span>Üst Koridor ${formatPrice(gridBot.tpTriggerPx)}</span>
+                  <span>Grid Max ${formatPrice(gridBot.tpTriggerPx)}</span>
                 </div>
               </div>
             </CardContent>
@@ -1238,7 +1238,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Crosshair className="size-4 text-rose-400" />
-                2. Balina vs Küçük Yatırımcı Tuzak Radarı
+                2. Whale vs Retail Trap Radar
               </CardTitle>
               <Badge
                 variant={
@@ -1249,13 +1249,13 @@ export function App() {
                     : 'metallic'
                 }
               >
-                Tuzak Skoru: {b2.formulas.dTrap >= 0 ? '+' : ''}
+                D_trap: {b2.formulas.dTrap >= 0 ? '+' : ''}
                 {b2.formulas.dTrap.toFixed(2)} (
                 {b2.formulas.trapClassification === 'NO_TRAP'
-                  ? 'DENGELİ / TUZAK YOK'
+                  ? 'NEUTRAL / SAFE'
                   : b2.formulas.trapClassification === 'BULL_TRAP'
-                  ? 'BOĞA TUZAĞI'
-                  : 'AYI TUZAĞI'}
+                  ? 'BULL TRAP'
+                  : 'BEAR TRAP'}
                 )
               </Badge>
             </CardHeader>
@@ -1265,9 +1265,9 @@ export function App() {
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2 text-xs font-mono">
-                    <span className="text-zinc-400">Küçük Yatırımcı</span>
+                    <span className="text-zinc-400">Retail Crowd</span>
                     <span className="text-emerald-300 font-semibold">
-                      %{(b1.sentiment.bullishRatio * 100).toFixed(0)} Yükseliş
+                      {(b1.sentiment.bullishRatio * 100).toFixed(0)}% Bullish
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-rose-500/35 overflow-hidden flex">
@@ -1281,14 +1281,14 @@ export function App() {
                   <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                     <span>S_retail: {b1.sentiment.sRetail.toFixed(2)}</span>
                     <span>
-                      %{(b1.sentiment.bearishRatio * 100).toFixed(0)} Düşüş
+                      {(b1.sentiment.bearishRatio * 100).toFixed(0)}% Bearish
                     </span>
                   </div>
                 </div>
 
                 <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2 text-xs font-mono">
-                    <span className="text-zinc-400">Balinalar (Whale)</span>
+                    <span className="text-zinc-400">Smart Money Whales</span>
                     <span
                       className={cn(
                         'font-semibold',
@@ -1297,7 +1297,7 @@ export function App() {
                           : 'text-rose-300'
                       )}
                     >
-                      %{whaleLongPct} Long
+                      {whaleLongPct}% Long
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-rose-500/40 overflow-hidden flex">
@@ -1321,7 +1321,7 @@ export function App() {
               <div className="glass-subcard rounded-xl p-3 flex flex-col gap-2">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="text-zinc-400">
-                    Tuzak Eşikleri (D_trap = Bireysel − 1.5×Balina)
+                    Trap Thresholds (D_trap = Retail − 1.5×Whale)
                   </span>
                   <span className="text-zinc-200">
                     {b2.formulas.dTrapBps} bps
@@ -1342,23 +1342,23 @@ export function App() {
                 </div>
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                   <span className="text-emerald-400">
-                    &lt; −1.10 Ayı Tuzağı (Alım Fırsatı)
+                    &lt; −1.10 Bear Trap (Long Signal)
                   </span>
-                  <span>Güvenli Koridor</span>
+                  <span>Safe Corridor</span>
                   <span className="text-rose-400">
-                    &gt; +1.10 Boğa Tuzağı (Risk!)
+                    &gt; +1.10 Bull Trap (Risk!)
                   </span>
                 </div>
               </div>
 
               {/* Active Execution Status */}
               <div className="glass-well rounded-lg px-3 py-2.5 flex items-center justify-between text-xs font-mono">
-                <span className="text-zinc-400 shrink-0 mr-2">Ajan Kararı:</span>
+                <span className="text-zinc-400 shrink-0 mr-2">Decision:</span>
                 <span className="text-zinc-100 truncate">
                   {b2.recommendedAction === 'AMEND_GRID_IN_FLIGHT'
-                    ? 'Koridoru Güncelle & Kâr Emirlerini Koru'
+                    ? 'Shift Corridor & Protect Take-Profit Orders'
                     : b2.recommendedAction === 'HOLD_GRID_CORRIDOR'
-                    ? 'Mevcut Kâr-Al Emirlerini Sabit Tut (FIFO Korumalı)'
+                    ? 'Hold Split Take-Profit Orders (FIFO Protected)'
                     : b2.recommendedAction}{' '}
                   • #{b3.primaryOkxAlgoOrOrdId.slice(-8)}
                 </span>
@@ -1371,7 +1371,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Terminal className="size-4 text-zinc-200" />
-                3. Canlı OKX CLI Komut & Kanıt Akışı
+                3. Live OKX CLI Proof Stream
               </CardTitle>
               <div className="flex items-center gap-1">
                 {[
@@ -1462,7 +1462,7 @@ export function App() {
             <CardHeader className="py-3 px-4">
               <CardTitle>
                 <Anchor className="size-4 text-amber-300" />
-                4. Kâr Kasası (Earn) & Avalanche Zincir Mührü
+                4. Treasury Vault & Avalanche C-Chain Seal
               </CardTitle>
               <div className="flex items-center gap-1.5">
                 <button
@@ -1501,44 +1501,44 @@ export function App() {
               {/* 4 Portfolio Balances + Live Earn Actions */}
               <div className="grid grid-cols-4 gap-2">
                 <div
-                  title="OKX Hesabındaki Toplam Net Varlık (AVAX + USDT + Simple Earn)"
+                  title="Total Account Net Asset Value on OKX (AVAX + USDT + Simple Earn)"
                   className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
                 >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    TOPLAM VARLIK
+                    TOTAL EQUITY
                   </span>
                   <span className="text-sm font-mono font-bold text-white mt-0.5">
                     ${b3.treasury.totalNavUsdt.toFixed(2)}
                   </span>
                 </div>
                 <div
-                  title="OKX Spot Al-Sat Hesabındaki Aktif Bakiye (AVAX + USDT)"
+                  title="Active Spot Trading Balance on OKX (AVAX + USDT)"
                   className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
                 >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    OKX SPOT KASA
+                    OKX TRADING
                   </span>
                   <span className="text-sm font-mono font-bold text-zinc-100 mt-0.5">
                     ${b3.treasury.tradingAccountUsdt.toFixed(2)}
                   </span>
                 </div>
                 <div
-                  title="OKX Simple Earn Faiz Kasasında Kilitli Kâr Bakiyesi"
+                  title="Realized Profit Locked in OKX Simple Earn Yield Vault"
                   className="glass-subcard rounded-lg p-2.5 flex flex-col border-emerald-400/25 cursor-help"
                 >
                   <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                    <Lock className="size-2.5" /> OKX FAİZ (EARN)
+                    <Lock className="size-2.5" /> OKX SIMPLE EARN
                   </span>
                   <span className="text-sm font-mono font-bold text-emerald-300 mt-0.5">
                     ${b3.treasury.lockedSimpleEarnUsdt.toFixed(2)}
                   </span>
                 </div>
                 <div
-                  title="Tamamlanan Al-Sat Turlarından Elde Edilen Net Gerçekleşmiş Kâr"
+                  title="Cumulative Realized Net PnL across completed trading cycles"
                   className="glass-subcard rounded-lg p-2.5 flex flex-col cursor-help"
                 >
                   <span className="text-[10px] font-mono text-zinc-500">
-                    GERÇEKLEŞEN KÂR
+                    REALIZED PnL
                   </span>
                   <span
                     className={cn(
