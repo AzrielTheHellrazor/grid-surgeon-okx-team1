@@ -1167,10 +1167,18 @@ export function App() {
                 </div>
                 <div className="glass-subcard rounded-lg p-2.5 flex flex-col">
                   <span className="text-[10px] font-mono text-zinc-500">
-                    REALIZED PnL
+                    NET PnL (LIVE)
                   </span>
-                  <span className="text-sm font-mono font-bold text-emerald-400 mt-0.5">
-                    ${b3.treasury.cumulativeRealizedPnlUsdt.toFixed(2)}
+                  <span
+                    className={cn(
+                      'text-sm font-mono font-bold mt-0.5',
+                      b3.treasury.cumulativeRealizedPnlUsdt >= 0
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
+                    )}
+                  >
+                    {b3.treasury.cumulativeRealizedPnlUsdt >= 0 ? '+' : '-'}$
+                    {Math.abs(b3.treasury.cumulativeRealizedPnlUsdt).toFixed(2)}
                   </span>
                 </div>
               </div>

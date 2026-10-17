@@ -272,7 +272,7 @@ export async function runPhase3Execute(
           pxDec: 3,
         };
 
-  // Real Fill-Ledger VWAP Cost Basis (`okx spot fills`) & Zero Loss Guarantee (P0.1)
+  // Real Fill-Ledger VWAP Cost Basis (`okx spot fills`) & Live Spot PnL Calculation
   const spotFills = Array.isArray(spotFillsRes.data) ? spotFillsRes.data : [];
   let accumCostUsdt = 0;
   let accumBuySz = 0;
@@ -307,6 +307,39 @@ export async function runPhase3Execute(
     accumBuySz > 0
       ? Number((accumCostUsdt / accumBuySz).toFixed(spotSizing.pxDec + 1))
       : fallbackAnchorPx;
+
+  let spotRealizedPnl = 0;
+  let completedSellCount = 0;
+  for (const fill of spotFills) {
+    const fSide = (fill.side || '').toLowerCase();
+    const fPx = Number(fill.fillPx || fill.px || 0);
+    const fSz = Number(fill.fillSz || fill.sz || 0);
+    const fFee = Math.abs(Number(fill.fee || 0));
+    const feeUsdt =
+      (fill.feeCcy || '').toUpperCase() === 'USDT' ? fFee : fFee * fPx;
+    if (fSide === 'sell' && fPx > 0 && fSz > 0) {
+      spotRealizedPnl += (fPx - vwapCostBasisPx) * fSz - feeUsdt;
+      completedSellCount += 1;
+    } else if (fSide === 'buy' && fPx > 0 && fSz > 0) {
+      spotRealizedPnl -= feeUsdt;
+    }
+  }
+  const spotMarkPx =
+    sense.market.bidPx > 0 && sense.market.askPx > 0
+      ? (sense.market.bidPx + sense.market.askPx) / 2
+      : lastPx;
+  const spotUnrealizedPnl =
+    avaxInventory >= 0.001
+      ? (spotMarkPx - vwapCostBasisPx) * avaxInventory
+      : 0;
+  state.treasury.cumulativeRealizedPnlUsdt = Number(
+    (
+      realHistPnl +
+      gridRealizedPnl +
+      spotRealizedPnl +
+      spotUnrealizedPnl
+    ).toFixed(2)
+  );
 
   const minProfitSellPx = Number(
     Math.max(sense.market.askPx, vwapCostBasisPx * 1.0022).toFixed(spotSizing.pxDec)
@@ -535,8 +568,8 @@ export async function runPhase3Execute(
       tpTriggerPx: plan.tpTriggerPx,
       slTriggerPx: plan.slTriggerPx,
       liquidationPx: verifiedLiqPx,
-      unrealizedPnlUsdt: 0,
-      gridProfitUsdt: 0,
+      unrealizedPnlUsdt: Number(spotUnrealizedPnl.toFixed(4)),
+      gridProfitUsdt: Number(spotRealizedPnl.toFixed(4)),
       amendCount: state.activeGridBot?.amendCount || 0,
       createdAt: firstLiveSpot.cTime
         ? new Date(Number(firstLiveSpot.cTime)).toISOString()
@@ -547,7 +580,10 @@ export async function runPhase3Execute(
       activeOrderPx: spotPx,
       entryFillPx: vwapCostBasisPx,
       avaxInventory,
-      roundTripsCompleted: state.activeGridBot?.roundTripsCompleted || 0,
+      roundTripsCompleted: Math.max(
+        completedSellCount,
+        state.activeGridBot?.roundTripsCompleted || 0
+      ),
     };
   } else {
     state.activeGridBot = {
@@ -565,15 +601,18 @@ export async function runPhase3Execute(
       tpTriggerPx: plan.tpTriggerPx,
       slTriggerPx: plan.slTriggerPx,
       liquidationPx: verifiedLiqPx,
-      unrealizedPnlUsdt: 0,
-      gridProfitUsdt: 0,
+      unrealizedPnlUsdt: Number(spotUnrealizedPnl.toFixed(4)),
+      gridProfitUsdt: Number(spotRealizedPnl.toFixed(4)),
       amendCount: state.activeGridBot?.amendCount || 0,
       createdAt: state.activeGridBot?.createdAt || new Date().toISOString(),
       lastAmendedAt: new Date().toISOString(),
       pingPongPhase: avaxInventory >= 0.095 ? 'HARVESTING_EXIT' : 'IDLE',
       entryFillPx: vwapCostBasisPx,
       avaxInventory,
-      roundTripsCompleted: state.activeGridBot?.roundTripsCompleted || 0,
+      roundTripsCompleted: Math.max(
+        completedSellCount,
+        state.activeGridBot?.roundTripsCompleted || 0
+      ),
     };
   }
 
