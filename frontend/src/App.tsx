@@ -15,8 +15,6 @@ import {
   ExternalLink,
   Play,
   Pause,
-  ArrowUpRight,
-  ArrowDownLeft,
   Zap,
 } from 'lucide-react';
 import {
@@ -33,7 +31,9 @@ import {
   cn,
 } from './components/ui/shadcn-metallic';
 
-const API_BASE = 'http://localhost:4001/api';
+const API_BASE =
+  (import.meta as unknown as { env?: { VITE_API_BASE?: string } }).env
+    ?.VITE_API_BASE || 'http://localhost:4001/api';
 
 const INSTRUMENTS = [
   { id: 'AVAX-USDT-SWAP', short: 'AVAX' },
@@ -1379,33 +1379,6 @@ export function App() {
                     {b3.treasury.cumulativeRealizedPnlUsdt >= 0 ? '+' : '-'}$
                     {Math.abs(b3.treasury.cumulativeRealizedPnlUsdt).toFixed(2)}
                   </span>
-                </div>
-              </div>
-
-              {/* 1-Click Live OKX Earn Transfer Bar ($1.00 Real Execution) */}
-              <div className="flex items-center justify-between gap-2 glass-subcard rounded-lg px-3 py-2 font-mono text-xs">
-                <span className="text-zinc-400 text-[11px]">
-                  Live OKX Simple Earn ($1 USDT):
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={runningAction !== null}
-                    onClick={() => triggerLiveAction('EARN_SWEEP')}
-                    className="metal-btn px-2.5 py-1 rounded text-[11px] text-emerald-300 flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <ArrowUpRight className="size-3" />
-                    <span>Sweep $1 → Earn</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={runningAction !== null}
-                    onClick={() => triggerLiveAction('EARN_REDEEM')}
-                    className="metal-btn px-2.5 py-1 rounded text-[11px] text-zinc-200 flex items-center gap-1 disabled:opacity-50"
-                  >
-                    <ArrowDownLeft className="size-3" />
-                    <span>Redeem $1</span>
-                  </button>
                 </div>
               </div>
 
