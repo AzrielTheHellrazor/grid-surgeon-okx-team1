@@ -18,7 +18,7 @@ function createInitialState(): PersistedSurgeonState {
     cycleCount: 0,
     autoPilotEnabled: false,
     autoPilotIntervalSec: 20,
-    contractAddress: '0xf859e4f116305fbea13c295ee41b67d5bdef4b05',
+    contractAddress: '0x7c52f6b7b588698700abbac6cbe37f3cfca305cd',
     activeGridBot: {
       algoId: '78492015839201',
       instId: 'AVAX-USDT-SWAP',

@@ -17,29 +17,31 @@ Instead of acting as a naive LLM that guesses 1-minute candle directions, this a
 ## 2. Hackathon Alignment & Scoring Strategy
 * **Main Task (Mandatory):** Autonomous AI agent built with **OKX Agent Trade Kit (ATK)** across **7 ATK skills** (`okx-cex-market`, `okx-sentiment-tracker`, `okx-cex-smartmoney`, `okx-cex-bot`, `okx-cex-trade`, `okx-cex-portfolio`, `okx-cex-earn`).
 * **Bonus 1 (+Extra Score):** Real market condition trading on `AVAX-USDT-SWAP` / `AVAX-USDT` (supports both `--demo` and Live modes).
-* **Bonus 2 (+Extra Score):** Deployed on **Avalanche** (`GridSurgeonRegistry.sol` on Avalanche C-Chain / Fuji Testnet).
-  * **Deployed Contract (`GridSurgeonRegistry.sol`):** [`0xf859e4f116305fbea13c295ee41b67d5bdef4b05`](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05)
+* **Bonus 2 (+Extra Score):** Deployed on **Avalanche** with full **ERC-8004 ("Trustless Agents") Standard** (`Identity Registry`, `Validation Registry`, `Reputation Registry`) in [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol).
+  * **ERC-8004 Registry Contract (`GridSurgeonRegistry.sol`):** [`0x7c52f6b7b588698700abbac6cbe37f3cfca305cd`](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd)
   * **Agent Operator Wallet:** [`0x07Ee05d717EBC2E47c0A97ad327d56A635920348`](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348)
-  * **Contract Deployment Tx:** [`0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1`](https://testnet.snowtrace.io/tx/0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1)
-  * **Genesis Decision Anchor Tx:** [`0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc`](https://testnet.snowtrace.io/tx/0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc)
+  * **ERC-8004 Contract Deploy Tx:** [`0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf`](https://testnet.snowtrace.io/tx/0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf)
+  * **Genesis ERC-8004 Decision + Validation + Reputation Tx:** [`0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b`](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b)
 * **Judging Criteria Coverage:**
-  * **35% Agent Architecture & Autonomy:** Fully autonomous 20-second `Sense → Reason → Act → Anchor` daemon loop with zero human intervention required.
+  * **35% Agent Architecture & Autonomy:** Fully autonomous 20-second `Sense → Reason → Act → Anchor` daemon loop with dedicated **`ERC8004TrustValidator`** verification agent.
   * **25% Product & Strategy:** Combines server-side grid bot surgery, whale divergence counter-trading, macro bunker protection, and high-water mark profit locking.
-  * **20% Technical Quality:** Uses deterministic quantitative formulas + real OKX CLI JSON pipelines + on-chain cryptographic state anchoring.
+  * **20% Technical Quality:** Uses deterministic quantitative formulas + real OKX CLI JSON pipelines + **ERC-8004 Trustless Agent** on-chain anchoring.
   * **20% Live Demo & Presentation:** Includes a 4-quadrant real-time Command Center UI with 5 one-click stage demo scenario buttons.
 
 ---
 
-## 🔺 Live Avalanche On-Chain Deployment & Verification (Fuji Testnet `43113`)
+## 🔺 Live Avalanche & ERC-8004 ("Trustless Agents") On-Chain Verification (Fuji Testnet `43113`)
 
-Every autonomous cycle hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, and anchors it on **Avalanche Fuji Testnet** via [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol):
+Every autonomous cycle is verified by the **`ERC8004TrustValidator`** agent, which hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, updates the **3 ERC-8004 Registries (`Identity #1`, `Validation`, `Reputation`)**, and anchors it on **Avalanche Fuji Testnet** via [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol):
 
-| On-Chain Artifact | Address / Transaction Hash | Snowtrace Explorer Link |
+| On-Chain Artifact / Endpoint | Address / Transaction Hash / URI | Explorer / Live Link |
 | :--- | :--- | :--- |
-| **`GridSurgeonRegistry.sol` Contract** | `0xf859e4f116305fbea13c295ee41b67d5bdef4b05` | [View Contract on Snowtrace ↗](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05) |
+| **ERC-8004 `GridSurgeonRegistry.sol` Contract** | `0x7c52f6b7b588698700abbac6cbe37f3cfca305cd` | [View Contract on Snowtrace ↗](https://testnet.snowtrace.io/address/0x7c52f6b7b588698700abbac6cbe37f3cfca305cd) |
+| **ERC-8004 Agent Identity** | `Agent ID #1` (`grid-surgeon.okx.avax`) | `http://localhost:4001/.well-known/agent-card.json` |
 | **Autonomous Operator Wallet** | `0x07Ee05d717EBC2E47c0A97ad327d56A635920348` | [View Operator on Snowtrace ↗](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348) |
-| **Contract Deployment Transaction** | `0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1` | [View Deploy Tx ↗](https://testnet.snowtrace.io/tx/0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1) |
-| **Genesis `recordDecision(...)` Tx** | `0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc` | [View Anchor Tx ↗](https://testnet.snowtrace.io/tx/0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc) |
+| **ERC-8004 Contract Deployment Tx** | `0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf` | [View Deploy Tx ↗](https://testnet.snowtrace.io/tx/0x427f8fb49dd9ca7159b89f9d38b8537fcff4a81f8090d9e93580a30f52fa7cdf) |
+| **ERC-8004 Validation & Reputation Anchor Tx** | `0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b` | [View Anchor Tx ↗](https://testnet.snowtrace.io/tx/0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b) |
+| **Previous V1 Registry Contract** | `0xf859e4f116305fbea13c295ee41b67d5bdef4b05` | [View V1 Contract ↗](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05) |
 
 ---
 

@@ -7,6 +7,10 @@ import {
   saveSurgeonState,
   updateContractAddress,
 } from './pipeline/orchestrator';
+import {
+  buildERC8004AgentPassport,
+  getOrCreateOperatorWallet,
+} from './pipeline/phase4Anchor';
 import { ScenarioMode } from './pipeline/types';
 
 const app = express();
@@ -32,11 +36,45 @@ function syncAutoPilotTimer() {
   }
 }
 
+app.get('/.well-known/agent-card.json', (_req, res) => {
+  const state = getSurgeonState();
+  const { address } = getOrCreateOperatorWallet();
+  const latestHash =
+    state.latestCycle?.border4Anchor?.anchorRecord?.reasoningHash ||
+    '0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b';
+  const passport = buildERC8004AgentPassport(
+    address,
+    state.contractAddress,
+    latestHash,
+    state
+  );
+  res.json(passport.agentCardJson);
+});
+
+app.get('/api/erc8004', (_req, res) => {
+  const state = getSurgeonState();
+  const { address } = getOrCreateOperatorWallet();
+  const latestHash =
+    state.latestCycle?.border4Anchor?.anchorRecord?.reasoningHash ||
+    '0x7e2539ef9428d486f98761b92cbc3d6e027cdbe954c8adc4275fa8d143f6110b';
+  const passport = buildERC8004AgentPassport(
+    address,
+    state.contractAddress,
+    latestHash,
+    state
+  );
+  res.json({
+    ok: true,
+    passport,
+  });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     service: 'grid-surgeon-backend',
     port: PORT,
+    erc8004AgentCard: `http://localhost:${PORT}/.well-known/agent-card.json`,
     timestamp: new Date().toISOString(),
   });
 });

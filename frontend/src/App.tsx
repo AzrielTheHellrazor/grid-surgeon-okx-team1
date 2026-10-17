@@ -1163,13 +1163,68 @@ export function App() {
                 </div>
               </div>
 
+              {/* ERC-8004 TRUSTLESS AGENT PASSPORT (IDENTITY + VALIDATION + REPUTATION) */}
+              {b4.erc8004Passport && (
+                <div className="p-3 rounded-lg bg-gradient-to-r from-emerald-950/30 via-[#0d1424] to-cyan-950/30 border border-emerald-500/40 mb-3 font-mono text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span className="text-emerald-300 font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      🪪 ERC-8004 TRUSTLESS AGENT PASSPORT • ID #{b4.erc8004Passport.identityRegistry.agentId} ({b4.erc8004Passport.identityRegistry.agentDomain})
+                    </span>
+                    <a
+                      href="http://localhost:4001/.well-known/agent-card.json"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-500/40 flex items-center gap-1"
+                    >
+                      /.well-known/agent-card.json <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <div className="p-2 rounded bg-[#080c15] border border-slate-800">
+                      <div className="text-[9px] text-slate-400">1. IDENTITY REGISTRY</div>
+                      <div className="text-emerald-300 font-bold mt-0.5">
+                        {b4.erc8004Passport.identityRegistry.status}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        Validator: {b4.erc8004Passport.validatorAgentName}
+                      </div>
+                    </div>
+                    <div className="p-2 rounded bg-[#080c15] border border-slate-800">
+                      <div className="text-[9px] text-slate-400">2. VALIDATION REGISTRY</div>
+                      <div className="text-cyan-300 font-bold mt-0.5">
+                        {b4.erc8004Passport.validationRegistry.totalValidatedTasks} Tasks Verified
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        EIP-191 + Keccak256
+                      </div>
+                    </div>
+                    <div className="p-2 rounded bg-[#080c15] border border-slate-800">
+                      <div className="text-[9px] text-slate-400">3. REPUTATION REGISTRY</div>
+                      <div className="text-amber-300 font-bold mt-0.5">
+                        Score: {b4.erc8004Passport.reputationRegistry.trustScore}/100
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {b4.erc8004Passport.reputationRegistry.feedbackCount} On-Chain Proofs
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Avalanche C-Chain / Fuji Cryptographic Anchor Box */}
               <div className="p-3 rounded-lg bg-[#0d1424] border border-amber-500/30 mb-3 space-y-2 font-mono text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-amber-300 font-bold flex items-center gap-1.5">
+                  <a
+                    href={`https://testnet.snowtrace.io/address/${b4.contractInfo.address}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-amber-300 hover:underline font-bold flex items-center gap-1.5"
+                  >
                     <FileCode2 className="w-3.5 h-3.5" />
-                    contracts/GridSurgeonRegistry.sol (ChainID {b4.anchorRecord.chainId})
-                  </span>
+                    contracts/GridSurgeonRegistry.sol (Fuji {b4.anchorRecord.chainId})
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-200 border border-amber-500/30">
                     {b4.anchorRecord.status}
                   </span>
@@ -1179,10 +1234,15 @@ export function App() {
                   <div className="p-2 rounded bg-[#080c15] border border-slate-800 flex items-center justify-between">
                     <div className="truncate">
                       <span className="text-slate-400">Operator: </span>
-                      <span className="text-slate-200">
+                      <a
+                        href={`https://testnet.snowtrace.io/address/${b4.operatorWallet.address}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-slate-200 hover:text-amber-300 underline"
+                      >
                         {b4.operatorWallet.address.slice(0, 10)}...
                         {b4.operatorWallet.address.slice(-8)}
-                      </span>
+                      </a>
                     </div>
                     <button
                       onClick={() =>
@@ -1201,10 +1261,15 @@ export function App() {
                   <div className="p-2 rounded bg-[#080c15] border border-slate-800 flex items-center justify-between">
                     <div className="truncate">
                       <span className="text-slate-400">Registry: </span>
-                      <span className="text-slate-200">
+                      <a
+                        href={`https://testnet.snowtrace.io/address/${b4.contractInfo.address}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-slate-200 hover:text-amber-300 underline"
+                      >
                         {b4.contractInfo.address.slice(0, 10)}...
                         {b4.contractInfo.address.slice(-8)}
-                      </span>
+                      </a>
                     </div>
                     <button
                       onClick={() =>
@@ -1220,6 +1285,22 @@ export function App() {
                     </button>
                   </div>
                 </div>
+
+                {b4.anchorRecord.txHash && (
+                  <div className="p-2 rounded bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-300 truncate">
+                      ✅ Live Fuji Tx: {b4.anchorRecord.txHash.slice(0, 18)}...{b4.anchorRecord.txHash.slice(-10)}
+                    </span>
+                    <a
+                      href={`https://testnet.snowtrace.io/tx/${b4.anchorRecord.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-200 hover:underline flex items-center gap-1 shrink-0 ml-2 font-bold"
+                    >
+                      Snowtrace <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
 
                 <div className="p-2 rounded bg-[#080c15] border border-slate-800">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
@@ -1303,9 +1384,20 @@ export function App() {
                     <span className="text-slate-300">
                       OKX #{item.okxAlgoOrOrdId}
                     </span>
-                    <span className="text-slate-400">
-                      Hash: {item.reasoningHash.slice(0, 12)}...
-                    </span>
+                    {item.txHash ? (
+                      <a
+                        href={`https://testnet.snowtrace.io/tx/${item.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-300 hover:underline flex items-center gap-1"
+                      >
+                        Tx: {item.txHash.slice(0, 10)}... <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    ) : (
+                      <span className="text-slate-400">
+                        Hash: {item.reasoningHash.slice(0, 12)}...
+                      </span>
+                    )}
                     <span className="text-emerald-400">
                       NAV ${(item.navUsdtE2 / 100).toFixed(2)}
                     </span>

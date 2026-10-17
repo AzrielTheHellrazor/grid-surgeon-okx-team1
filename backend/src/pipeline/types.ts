@@ -281,9 +281,38 @@ export interface AvalancheAnchorRecord {
   blockNumber: number | null;
 }
 
+export interface ERC8004AgentPassport {
+  standard: 'ERC-8004 (Trustless Agents v1)';
+  validatorAgentName: 'ERC8004TrustValidator';
+  identityRegistry: {
+    agentId: number;
+    agentDomain: string;
+    agentCardUri: string;
+    operatorAddress: string;
+    registryContract: string;
+    status: 'REGISTERED_ON_CHAIN';
+  };
+  validationRegistry: {
+    reasoningHash: string;
+    signatureVerified: boolean;
+    validatorAddress: string;
+    validationScheme: string;
+    totalValidatedTasks: number;
+  };
+  reputationRegistry: {
+    trustScore: number;
+    maxScore: number;
+    feedbackCount: number;
+    validatedSurgeries: number;
+    validatedProfitSweeps: number;
+  };
+  agentCardJson: Record<string, unknown>;
+}
+
 export interface Phase4AnchorOutput {
   meta: BorderStatusMeta;
   anchorRecord: AvalancheAnchorRecord;
+  erc8004Passport?: ERC8004AgentPassport;
   operatorWallet: {
     address: string;
     network: string;
