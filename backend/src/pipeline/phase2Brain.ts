@@ -17,7 +17,15 @@ export function runPhase2Brain(
   const startedAt = new Date(startedAtMs).toISOString();
 
   const lastPx = sense.market.lastPx;
-  const atr = Math.max(sense.technicals.atr14, lastPx * 0.01);
+  const minAtrFactor =
+    sense.bar === '1m'
+      ? 0.0012
+      : sense.bar === '5m'
+      ? 0.0025
+      : sense.bar === '15m'
+      ? 0.0045
+      : 0.01;
+  const atr = Math.max(sense.technicals.atr14, lastPx * minAtrFactor);
   const adx = sense.technicals.adx14;
   const bbw = Number((sense.technicals.bbWidthPct / 100).toFixed(4));
   const oiDelta1hPct = sense.market.oiDelta1hPct;

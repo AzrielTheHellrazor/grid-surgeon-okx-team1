@@ -42,6 +42,8 @@ const INSTRUMENTS = [
   { id: 'SOL-USDT-SWAP', short: 'SOL' },
 ];
 
+const TIMEFRAMES = ['1m', '5m', '15m', '1H'] as const;
+
 declare global {
   interface Window {
     ethereum?: {
@@ -68,6 +70,7 @@ function GridCandleChart({
   tpPx,
   slPx,
   lastPx,
+  bar = '1m',
 }: {
   candles: CandleBar[];
   gridLevels: number[];
@@ -76,14 +79,18 @@ function GridCandleChart({
   tpPx: number;
   slPx: number;
   lastPx: number;
+  bar?: string;
 }) {
   const bars = candles.slice(-36);
   if (bars.length === 0) return null;
 
   const candleHigh = Math.max(...bars.map((b) => b.high));
   const candleLow = Math.min(...bars.map((b) => b.low));
-  const chartMax = Math.max(candleHigh, maxPx, tpPx) * 1.002;
-  const chartMin = Math.min(candleLow, minPx, slPx) * 0.998;
+  const rawMax = Math.max(candleHigh, maxPx, tpPx);
+  const rawMin = Math.min(candleLow, minPx, slPx);
+  const rawSpan = Math.max(0.0001, rawMax - rawMin);
+  const chartMax = rawMax + rawSpan * 0.08;
+  const chartMin = rawMin - rawSpan * 0.08;
   const span = Math.max(0.0001, chartMax - chartMin);
 
   const width = 560;
@@ -100,7 +107,9 @@ function GridCandleChart({
   return (
     <div className="glass-well rounded-xl p-2.5 relative overflow-hidden">
       <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1 px-1">
-        <span>1H CANDLES ({bars.length}) + 12 GRID LEVELS</span>
+        <span>
+          {bar} CANDLES ({bars.length}) + 12 GRID LEVELS
+        </span>
         <span className="text-zinc-300">
           Range: ${formatPrice(minPx)} – ${formatPrice(maxPx)}
         </span>
@@ -215,6 +224,7 @@ export function App() {
   const [cycle, setCycle] = useState<FullPipelineCycleResult | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [switchingInst, setSwitchingInst] = useState<string | null>(null);
+  const [switchingBar, setSwitchingBar] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<string | null>(null);
   const [actionToast, setActionToast] = useState<string | null>(null);
   const [inspectedBorder, setInspectedBorder] = useState<1 | 2 | 3 | 4 | null>(
@@ -245,7 +255,7 @@ export function App() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 4000);
+    const interval = setInterval(fetchStatus, 2500);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -290,6 +300,28 @@ export function App() {
       setErrorBanner('Instrument switch failed');
     } finally {
       setSwitchingInst(null);
+    }
+  };
+
+  const switchTimeframe = async (bar: string) => {
+    if (switchingBar) return;
+    setSwitchingBar(bar);
+    setErrorBanner(null);
+    try {
+      const res = await fetch(`${API_BASE}/timeframe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bar }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setState(data.state);
+        setCycle(data.cycle);
+      }
+    } catch {
+      setErrorBanner('Timeframe switch failed');
+    } finally {
+      setSwitchingBar(null);
     }
   };
 
@@ -510,6 +542,34 @@ export function App() {
                       <RefreshCw className="size-2.5 animate-spin text-emerald-400" />
                     )}
                     <span>{inst.short}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Timeframe Selector (1m / 5m / 15m / 1H) */}
+            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+              {TIMEFRAMES.map((tf) => {
+                const activeTf = b1.bar || state.selectedBar || '1m';
+                const isSelected = activeTf === tf;
+                const isLoadingTf = switchingBar === tf;
+                return (
+                  <button
+                    key={tf}
+                    type="button"
+                    disabled={switchingBar !== null}
+                    onClick={() => switchTimeframe(tf)}
+                    className={cn(
+                      'px-2 py-1 rounded-md text-[11px] font-mono font-medium transition flex items-center gap-1',
+                      isSelected
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                        : 'text-zinc-400 hover:text-zinc-100'
+                    )}
+                  >
+                    {isLoadingTf && (
+                      <RefreshCw className="size-2.5 animate-spin text-emerald-400" />
+                    )}
+                    <span>{tf}</span>
                   </button>
                 );
               })}
@@ -767,7 +827,7 @@ export function App() {
                 ))}
               </div>
 
-              {/* Live 1H Candlesticks + 12-Grid Corridor Chart */}
+              {/* Live Candlesticks + 12-Grid Corridor Chart */}
               <GridCandleChart
                 candles={b1.candles || []}
                 gridLevels={b2.gridPlan.gridLevels}
@@ -776,6 +836,7 @@ export function App() {
                 tpPx={gridBot.tpTriggerPx}
                 slPx={gridBot.slTriggerPx}
                 lastPx={b1.market.lastPx}
+                bar={b1.bar || state.selectedBar || '1m'}
               />
 
               {/* Corridor Range Gauge */}

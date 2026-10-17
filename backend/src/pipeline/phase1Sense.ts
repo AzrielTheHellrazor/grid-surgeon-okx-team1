@@ -5,6 +5,7 @@ import {
   DataSourceTag,
   Phase1SenseOutput,
   ScenarioMode,
+  TimeframeBar,
 } from './types';
 
 const DEFAULT_INST_ID = 'AVAX-USDT-SWAP';
@@ -16,9 +17,13 @@ const DEFAULT_INST_ID = 'AVAX-USDT-SWAP';
  */
 export async function runPhase1Sense(
   scenario: ScenarioMode = 'LIVE',
-  instId: string = DEFAULT_INST_ID
+  instId: string = DEFAULT_INST_ID,
+  bar: TimeframeBar = '1m'
 ): Promise<Phase1SenseOutput> {
   const activeInstId = instId || DEFAULT_INST_ID;
+  const activeBar: TimeframeBar = bar || '1m';
+  const indicatorBar = activeBar === '1m' ? '3m' : activeBar;
+  const oiBar = activeBar === '1m' || activeBar === '5m' ? '5m' : activeBar;
   const baseCcy = activeInstId.split('-')[0] || 'AVAX';
   const spotInstId = `${baseCcy}-USDT`;
   const startedAtMs = Date.now();
@@ -41,17 +46,17 @@ export async function runPhase1Sense(
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<string[]>>({
-      args: ['market', 'candles', activeInstId, '--bar', '1H', '--limit', '50', '--json'],
+      args: ['market', 'candles', activeInstId, '--bar', activeBar, '--limit', '50', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, unknown>>>({
-      args: ['market', 'indicator', 'rsi', activeInstId, '--bar', '1H', '--json'],
+      args: ['market', 'indicator', 'rsi', activeInstId, '--bar', indicatorBar, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, unknown>>>({
-      args: ['market', 'indicator', 'bb', activeInstId, '--bar', '1H', '--json'],
+      args: ['market', 'indicator', 'bb', activeInstId, '--bar', indicatorBar, '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
@@ -61,12 +66,12 @@ export async function runPhase1Sense(
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<{ instId: string; bar: string; rows: Array<Record<string, string>> }>>({
-      args: ['market', 'oi-history', activeInstId, '--bar', '1H', '--limit', '24', '--json'],
+      args: ['market', 'oi-history', activeInstId, '--bar', oiBar, '--limit', '24', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
     runOkxCli<Array<Record<string, unknown>>>({
-      args: ['market', 'oi-change', '--instType', 'SWAP', '--bar', '1H', '--limit', '10', '--json'],
+      args: ['market', 'oi-change', '--instType', 'SWAP', '--bar', oiBar, '--limit', '10', '--json'],
       phase: 'BORDER_1_SENSE',
       skill: 'okx-cex-market',
     }),
@@ -116,11 +121,11 @@ export async function runPhase1Sense(
   const oiDelta1hUsd = safeNum(latestOiRow?.oiDeltaUsd, (oiUsd * oiDelta1hPct) / 100);
 
   // Compute deterministic ATR_14, ADX_14, RSI_14, BB(20,2) from the 50 real candles
-  const computedTech = computeTechnicalsFromCandles(candles, lastPx);
+  const computedTech = computeTechnicalsFromCandles(candles, lastPx, activeBar);
 
-  // Extract CLI RSI & BB if returned by OKX CLI
-  const cliRsi = extractCliRsi(rsiRes.data);
-  const cliBb = extractCliBb(bbRes.data);
+  // Extract CLI RSI & BB if returned by OKX CLI (for 1m, use direct 1m candle computation)
+  const cliRsi = activeBar === '1m' ? null : extractCliRsi(rsiRes.data, indicatorBar);
+  const cliBb = activeBar === '1m' ? null : extractCliBb(bbRes.data, indicatorBar);
 
   const rsi14 = cliRsi !== null ? cliRsi : computedTech.rsi14;
   const bbUpper = cliBb ? cliBb.upper : computedTech.bbUpper;
@@ -268,7 +273,7 @@ export async function runPhase1Sense(
       durationMs: Math.max(1, completedAtMs - startedAtMs),
       startedAt,
       completedAt: new Date(completedAtMs).toISOString(),
-      inputContract: `ScenarioMode(${scenario}) + InstId(${activeInstId})`,
+      inputContract: `ScenarioMode(${scenario}) + InstId(${activeInstId}) + Bar(${activeBar})`,
       outputContract: 'Phase1SenseOutput (Verified Market, BB/RSI/ATR/ADX, Sentiment, Whale & Macro)',
       GuaranteeNote:
         'All 10 OKX CLI feeds wrapped in 8s timeout boundaries with deterministic 50-candle ATR/ADX/RSI/BB verification.',
@@ -276,6 +281,7 @@ export async function runPhase1Sense(
     scenario,
     instId: activeInstId,
     spotInstId,
+    bar: activeBar,
     market: {
       lastPx,
       askPx,
@@ -365,7 +371,7 @@ function parseCandles(raw: Array<string[]> | null): CandleBar[] {
   return parsed;
 }
 
-function extractCliRsi(raw: unknown): number | null {
+function extractCliRsi(raw: unknown, barKey: string = '1H'): number | null {
   try {
     const arr = raw as Array<{
       data?: Array<{
@@ -376,6 +382,7 @@ function extractCliRsi(raw: unknown): number | null {
       }>;
     }>;
     const valStr =
+      arr?.[0]?.data?.[0]?.timeframes?.[barKey]?.indicators?.RSI?.[0]?.values?.['14'] ??
       arr?.[0]?.data?.[0]?.timeframes?.['1H']?.indicators?.RSI?.[0]?.values?.['14'];
     const num = Number(valStr);
     return Number.isFinite(num) && num > 0 ? Number(num.toFixed(2)) : null;
@@ -385,7 +392,8 @@ function extractCliRsi(raw: unknown): number | null {
 }
 
 function extractCliBb(
-  raw: unknown
+  raw: unknown,
+  barKey: string = '1H'
 ): { upper: number; middle: number; lower: number } | null {
   try {
     const arr = raw as Array<{
@@ -402,7 +410,9 @@ function extractCliBb(
         >;
       }>;
     }>;
-    const vals = arr?.[0]?.data?.[0]?.timeframes?.['1H']?.indicators?.BB?.[0]?.values;
+    const vals =
+      arr?.[0]?.data?.[0]?.timeframes?.[barKey]?.indicators?.BB?.[0]?.values ??
+      arr?.[0]?.data?.[0]?.timeframes?.['1H']?.indicators?.BB?.[0]?.values;
     const upper = Number(vals?.upper);
     const middle = Number(vals?.middle);
     const lower = Number(vals?.lower);
@@ -424,7 +434,11 @@ function extractCliBb(
   }
 }
 
-function computeTechnicalsFromCandles(candles: CandleBar[], fallbackPx: number) {
+function computeTechnicalsFromCandles(
+  candles: CandleBar[],
+  fallbackPx: number,
+  bar: TimeframeBar = '1H'
+) {
   if (candles.length < 15) {
     return {
       rsi14: 52.4,
@@ -513,12 +527,22 @@ function computeTechnicalsFromCandles(candles: CandleBar[], fallbackPx: number) 
       ? recentDx.reduce((a, b) => a + b, 0) / recentDx.length
       : 19.5;
 
+  const atrFloor1H = Math.max(atr14, fallbackPx * 0.008);
+  const scaledAtr =
+    bar === '1m'
+      ? Math.max(atr14, fallbackPx * 0.0012)
+      : bar === '5m'
+      ? Math.max(atr14, fallbackPx * 0.0025)
+      : bar === '15m'
+      ? Math.max(atr14, fallbackPx * 0.0045)
+      : atrFloor1H;
+
   return {
     rsi14: Number(rsi14.toFixed(2)),
     bbUpper: Number(bbUpper.toFixed(4)),
     bbMiddle: Number(bbMiddle.toFixed(4)),
     bbLower: Number(bbLower.toFixed(4)),
-    atr14: Number(Math.max(atr14, fallbackPx * 0.008).toFixed(4)),
+    atr14: Number(scaledAtr.toFixed(4)),
     adx14: Number(clamp(adx14, 8, 65).toFixed(2)),
   };
 }

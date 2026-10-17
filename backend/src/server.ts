@@ -35,7 +35,7 @@ function syncAutoPilotTimer() {
       executeFullPipelineCycle('LIVE').catch((err) => {
         console.error('[AutoPilot Cycle Error Caught]:', err);
       });
-    }, (state.autoPilotIntervalSec || 20) * 1000);
+    }, (state.autoPilotIntervalSec || 6) * 1000);
   }
 }
 
@@ -131,6 +131,10 @@ app.post('/api/instrument', async (req, res) => {
     const instId = allowed.includes(requested) ? requested : 'AVAX-USDT-SWAP';
     const state = getSurgeonState();
     state.selectedInstId = instId;
+    if (state.activeGridBot) {
+      state.activeGridBot.minPx = 0;
+      state.activeGridBot.maxPx = 0;
+    }
     saveSurgeonState(state);
 
     const cycle = await executeFullPipelineCycle('LIVE');
@@ -144,6 +148,40 @@ app.post('/api/instrument', async (req, res) => {
     res.status(500).json({
       ok: false,
       error: err instanceof Error ? err.message : 'Instrument switch error',
+    });
+  }
+});
+
+app.post('/api/timeframe', async (req, res) => {
+  try {
+    const allowed = ['1m', '5m', '15m', '1H'] as const;
+    const rawBar = String(req.body?.bar || '1m');
+    const bar = (allowed.includes(rawBar as any) ? rawBar : '1m') as
+      | '1m'
+      | '5m'
+      | '15m'
+      | '1H';
+    const state = getSurgeonState();
+    state.selectedBar = bar;
+    state.autoPilotIntervalSec = bar === '1m' ? 6 : bar === '5m' ? 10 : 20;
+    if (state.activeGridBot) {
+      state.activeGridBot.minPx = 0;
+      state.activeGridBot.maxPx = 0;
+    }
+    saveSurgeonState(state);
+    syncAutoPilotTimer();
+
+    const cycle = await executeFullPipelineCycle('LIVE');
+    res.json({
+      ok: true,
+      bar,
+      cycle,
+      state: getSurgeonState(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Timeframe switch error',
     });
   }
 });

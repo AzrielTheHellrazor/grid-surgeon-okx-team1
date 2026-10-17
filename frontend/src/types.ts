@@ -5,6 +5,8 @@ export type ScenarioMode =
   | 'PROFIT_SWEEP'
   | 'MACRO_BUNKER';
 
+export type TimeframeBar = '1m' | '5m' | '15m' | '1H';
+
 export type MarketRegime =
   | 'RANGING_GRID'
   | 'BULL_TRAP_SHORT'
@@ -69,6 +71,7 @@ export interface Phase1SenseOutput {
   scenario: ScenarioMode;
   instId: string;
   spotInstId: string;
+  bar?: TimeframeBar;
   market: {
     lastPx: number;
     askPx: number;
@@ -363,6 +366,7 @@ export interface FullPipelineCycleResult {
 export interface PersistedSurgeonState {
   cycleCount: number;
   selectedInstId?: string;
+  selectedBar?: TimeframeBar;
   autoPilotEnabled: boolean;
   autoPilotIntervalSec: number;
   contractAddress: string;

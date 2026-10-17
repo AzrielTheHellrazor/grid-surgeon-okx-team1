@@ -213,6 +213,8 @@ export async function runPhase3Execute(
   // 6. Parse REAL Active Grid Bot or Live Spot Grid Order
   let latestSurgery: GridSurgeryEvent | null = null;
   const latestProfitSweep: ProfitSweepEvent | null = null;
+  const prevMinPx = state.activeGridBot?.minPx || plan.minPx;
+  const prevMaxPx = state.activeGridBot?.maxPx || plan.maxPx;
 
   if (firstLiveGrid && firstLiveGrid.algoId) {
     state.activeGridBot = {
@@ -241,14 +243,18 @@ export async function runPhase3Execute(
   } else if (firstLiveSpot && firstLiveSpot.ordId) {
     const spotPx = Number(firstLiveSpot.px || plan.minPx);
     const spotSz = Number(firstLiveSpot.sz || 0.1);
+    const preservedMaxPx =
+      prevMaxPx > spotPx
+        ? prevMaxPx
+        : Number((spotPx + 5 * brain.formulas.atr14).toFixed(4));
     state.activeGridBot = {
       algoId: firstLiveSpot.ordId,
-      instId: sense.spotInstId,
+      instId: sense.instId,
       algoOrdType: 'contract_grid',
       direction: 'neutral',
       status: 'RUNNING',
       minPx: spotPx,
-      maxPx: plan.maxPx,
+      maxPx: preservedMaxPx,
       gridNum: plan.gridNum,
       gridLevels: plan.gridLevels,
       leverage: 1,
@@ -291,50 +297,112 @@ export async function runPhase3Execute(
   // Pre-Trade On-Chain Governor Check on Avalanche Fuji (`emergencyCircuitBreaker`)
   const onChainGov = await readOnChainGovernorState(state.contractAddress);
 
-  // If a real grid bot is running on OKX and requires in-flight surgery, execute real `okx bot grid amend` (only if On-Chain Circuit Breaker is OFF)
-  if (
-    !onChainGov.circuitBreakerActive &&
-    firstLiveGrid?.algoId &&
-    plan.requiresInFlightSurgery
-  ) {
-    const prevMinPx = state.activeGridBot.minPx;
-    const prevMaxPx = state.activeGridBot.maxPx;
-    const amendArgs = [
-      'bot',
-      'grid',
-      'amend',
-      '--algoId',
-      firstLiveGrid.algoId,
-      '--minPx',
-      String(plan.minPx),
-      '--maxPx',
-      String(plan.maxPx),
-      '--gridNum',
-      String(plan.gridNum),
-      '--instId',
-      sense.instId,
-      '--tpTriggerPx',
-      String(plan.tpTriggerPx),
-      '--slTriggerPx',
-      String(plan.slTriggerPx),
-      '--json',
-    ];
-    const amendRes = await runOkxCli({
-      args: amendArgs,
-      phase: 'BORDER_3_EXECUTE',
-      skill: 'okx-cex-bot',
-    });
-    cliRecords.push(amendRes.record);
+  // If a real grid bot or spot grid order is running on OKX and requires in-flight surgery, execute real amend (only if On-Chain Circuit Breaker is OFF)
+  if (!onChainGov.circuitBreakerActive && plan.requiresInFlightSurgery) {
+    if (firstLiveGrid?.algoId) {
+      const amendArgs = [
+        'bot',
+        'grid',
+        'amend',
+        '--algoId',
+        firstLiveGrid.algoId,
+        '--minPx',
+        String(plan.minPx),
+        '--maxPx',
+        String(plan.maxPx),
+        '--gridNum',
+        String(plan.gridNum),
+        '--instId',
+        sense.instId,
+        '--tpTriggerPx',
+        String(plan.tpTriggerPx),
+        '--slTriggerPx',
+        String(plan.slTriggerPx),
+        '--json',
+      ];
+      const amendRes = await runOkxCli({
+        args: amendArgs,
+        phase: 'BORDER_3_EXECUTE',
+        skill: 'okx-cex-bot',
+      });
+      cliRecords.push(amendRes.record);
 
-    if (amendRes.success) {
+      if (amendRes.success) {
+        state.activeGridBot.minPx = plan.minPx;
+        state.activeGridBot.maxPx = plan.maxPx;
+        state.activeGridBot.status = 'AMENDED';
+        state.activeGridBot.amendCount += 1;
+        latestSurgery = {
+          id: `surg-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          algoId: firstLiveGrid.algoId,
+          triggerPx: lastPx,
+          previousMinPx: prevMinPx,
+          previousMaxPx: prevMaxPx,
+          newMinPx: plan.minPx,
+          newMaxPx: plan.maxPx,
+          newTpTriggerPx: plan.tpTriggerPx,
+          newSlTriggerPx: plan.slTriggerPx,
+          corridorPctBefore: plan.corridorPositionPct,
+          atrAtSurgery: brain.formulas.atr14,
+          commandExecuted: `okx ${amendArgs.join(' ')}`,
+        };
+        state.surgeryHistory.unshift(latestSurgery);
+      }
+    } else if (firstLiveSpot?.ordId) {
+      const newSpotPx = Number(plan.minPx.toFixed(3));
+      const spotAmendArgs = [
+        'spot',
+        'amend',
+        '--instId',
+        sense.spotInstId,
+        '--ordId',
+        firstLiveSpot.ordId,
+        '--newPx',
+        String(newSpotPx),
+        '--json',
+      ];
+      const spotAmendRes = await runOkxCli({
+        args: spotAmendArgs,
+        phase: 'BORDER_3_EXECUTE',
+        skill: 'okx-cex-trade',
+      });
+      cliRecords.push(spotAmendRes.record);
+
+      if (spotAmendRes.success) {
+        state.activeGridBot.minPx = newSpotPx;
+        state.activeGridBot.maxPx = plan.maxPx;
+        state.activeGridBot.status = 'AMENDED';
+        state.activeGridBot.amendCount += 1;
+        latestSurgery = {
+          id: `surg-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          algoId: firstLiveSpot.ordId,
+          triggerPx: lastPx,
+          previousMinPx: prevMinPx,
+          previousMaxPx: prevMaxPx,
+          newMinPx: newSpotPx,
+          newMaxPx: plan.maxPx,
+          newTpTriggerPx: plan.tpTriggerPx,
+          newSlTriggerPx: plan.slTriggerPx,
+          corridorPctBefore: plan.corridorPositionPct,
+          atrAtSurgery: brain.formulas.atr14,
+          commandExecuted: `okx ${spotAmendArgs.join(' ')}`,
+        };
+        state.surgeryHistory.unshift(latestSurgery);
+      }
+    } else if (
+      prevMinPx > 0 &&
+      (Math.abs(prevMinPx - plan.minPx) > 0.0001 ||
+        Math.abs(prevMaxPx - plan.maxPx) > 0.0001)
+    ) {
       state.activeGridBot.minPx = plan.minPx;
       state.activeGridBot.maxPx = plan.maxPx;
-      state.activeGridBot.status = 'AMENDED';
       state.activeGridBot.amendCount += 1;
       latestSurgery = {
         id: `surg-${Date.now()}`,
         timestamp: new Date().toISOString(),
-        algoId: firstLiveGrid.algoId,
+        algoId: 'CORRIDOR_AUTO',
         triggerPx: lastPx,
         previousMinPx: prevMinPx,
         previousMaxPx: prevMaxPx,
@@ -344,7 +412,7 @@ export async function runPhase3Execute(
         newSlTriggerPx: plan.slTriggerPx,
         corridorPctBefore: plan.corridorPositionPct,
         atrAtSurgery: brain.formulas.atr14,
-        commandExecuted: `okx ${amendArgs.join(' ')}`,
+        commandExecuted: `auto-recenter [${plan.minPx.toFixed(4)}, ${plan.maxPx.toFixed(4)}]`,
       };
       state.surgeryHistory.unshift(latestSurgery);
     }

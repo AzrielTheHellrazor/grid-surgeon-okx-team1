@@ -17,8 +17,9 @@ function createInitialState(): PersistedSurgeonState {
   return {
     cycleCount: 0,
     selectedInstId: 'AVAX-USDT-SWAP',
-    autoPilotEnabled: false,
-    autoPilotIntervalSec: 20,
+    selectedBar: '1m',
+    autoPilotEnabled: true,
+    autoPilotIntervalSec: 6,
     contractAddress: '0x7c52f6b7b588698700abbac6cbe37f3cfca305cd',
     activeGridBot: {
       algoId: 'NONE',
@@ -76,6 +77,14 @@ export function getSurgeonState(): PersistedSurgeonState {
       ) as PersistedSurgeonState;
       if (loaded && typeof loaded.cycleCount === 'number') {
         if (!loaded.selectedInstId) loaded.selectedInstId = 'AVAX-USDT-SWAP';
+        if (!loaded.selectedBar) {
+          loaded.selectedBar = '1m';
+          loaded.autoPilotIntervalSec = 6;
+          if (loaded.activeGridBot) {
+            loaded.activeGridBot.minPx = 0;
+            loaded.activeGridBot.maxPx = 0;
+          }
+        }
         memoryState = loaded;
         return memoryState;
       }
@@ -152,15 +161,21 @@ export async function executeFullPipelineCycle(
       const startedAt = new Date(startedAtMs).toISOString();
       const nextCycleNum = state.cycleCount + 1;
       const targetInstId = state.selectedInstId || 'AVAX-USDT-SWAP';
+      const targetBar = state.selectedBar || '1m';
 
       // BORDER 1: Multi-Modal OKX CLI Sensing
-      const border1Sense = await runPhase1Sense(scenario, targetInstId);
+      const border1Sense = await runPhase1Sense(
+        scenario,
+        targetInstId,
+        targetBar
+      );
 
-      // Initialize or recenter grid bot bounds if empty or if instrument changed
+      // Initialize or recenter grid bot bounds if empty or if base coin changed
+      const prevBase = (state.activeGridBot?.instId || '').split('-')[0];
+      const nextBase = border1Sense.instId.split('-')[0];
       if (
         state.activeGridBot &&
-        (state.activeGridBot.minPx === 0 ||
-          state.activeGridBot.instId !== border1Sense.instId)
+        (state.activeGridBot.minPx === 0 || prevBase !== nextBase)
       ) {
         const atr = border1Sense.technicals.atr14;
         const lastPx = border1Sense.market.lastPx;
