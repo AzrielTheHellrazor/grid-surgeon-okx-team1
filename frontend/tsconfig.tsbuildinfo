@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/errorboundary.tsx","./src/main.tsx","./src/types.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/errorboundary.tsx","./src/main.tsx","./src/types.ts","./src/components/ui/shadcn-metallic.tsx"],"version":"5.9.3"}
