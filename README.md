@@ -30,15 +30,38 @@ Instead of acting as a naive LLM that guesses 1-minute candle directions, this a
 
 ---
 
+## 🔺 Live Avalanche On-Chain Deployment & Verification (Fuji Testnet `43113`)
+
+Every autonomous cycle hashes the full quantitative decision payload (`keccak256`), signs it via EIP-191 ECDSA, and anchors it on **Avalanche Fuji Testnet** via [`contracts/GridSurgeonRegistry.sol`](./contracts/GridSurgeonRegistry.sol):
+
+| On-Chain Artifact | Address / Transaction Hash | Snowtrace Explorer Link |
+| :--- | :--- | :--- |
+| **`GridSurgeonRegistry.sol` Contract** | `0xf859e4f116305fbea13c295ee41b67d5bdef4b05` | [View Contract on Snowtrace ↗](https://testnet.snowtrace.io/address/0xf859e4f116305fbea13c295ee41b67d5bdef4b05) |
+| **Autonomous Operator Wallet** | `0x07Ee05d717EBC2E47c0A97ad327d56A635920348` | [View Operator on Snowtrace ↗](https://testnet.snowtrace.io/address/0x07Ee05d717EBC2E47c0A97ad327d56A635920348) |
+| **Contract Deployment Transaction** | `0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1` | [View Deploy Tx ↗](https://testnet.snowtrace.io/tx/0xda95dda68de560880c30283ae82e6d6e6ac4ba2f2de8f958fb836a0d0f464ff1) |
+| **Genesis `recordDecision(...)` Tx** | `0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc` | [View Anchor Tx ↗](https://testnet.snowtrace.io/tx/0xb2a17da07c4fafe49ba27a8fdf7953fecc2ffecb47fc0a5ecbbea0691d091ddc) |
+
+---
+
 ## 🚀 Zero-Touch 1-Click Quick Start (Vibecoder Ready)
 
-No manual configuration or code editing required. Simply run:
+### Step 1 (Optional): Connect OKX Demo / Simulated Trading Account via OAuth
+Public market, candle, indicator, funding, and open-interest feeds work immediately out-of-the-box via `@okx_ai/okx-trade-cli`. To unlock live account/bot execution in Demo mode:
+```bash
+okx auth login --SimulatedTrading
+```
 
+### Step 2: Start the Full-Stack Command Center
 ```bash
 cd /Users/goktus/Desktop/Grid-Surgeon
 ./start.sh
 # Or equivalently:
 npm start
+```
+
+### Step 3: Run the 4-Border Pipeline & Math Verification Suite
+```bash
+./verify-pipelines.sh
 ```
 
 * **Backend 4-Border Pipeline API:** `http://localhost:4001` (`/api/status`, `/api/cycle`, `/api/scenario`, `/api/autopilot`, `/api/contract`)
