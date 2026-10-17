@@ -632,3 +632,156 @@ export function buildERC8004AgentPassport(
     agentCardJson,
   };
 }
+
+/**
+ * Reads live `emergencyCircuitBreaker` and `maxAllowedLeverage` from `GridSurgeonRegistry` on Avalanche Fuji
+ * BEFORE Border 3 executes any OKX write commands (Pre-Trade On-Chain Governor).
+ */
+export async function readOnChainGovernorState(contractAddress: string): Promise<{
+  circuitBreakerActive: boolean;
+  maxAllowedLeverage: number;
+}> {
+  const rpcUrl =
+    process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+  try {
+    const publicClient = createPublicClient({
+      chain: avalancheFuji,
+      transport: http(rpcUrl, { timeout: 4000 }),
+    });
+    const [cbActive, maxLev] = await Promise.all([
+      publicClient.readContract({
+        address: contractAddress as `0x${string}`,
+        abi: GRID_SURGEON_ABI,
+        functionName: 'emergencyCircuitBreaker',
+      }),
+      publicClient.readContract({
+        address: contractAddress as `0x${string}`,
+        abi: GRID_SURGEON_ABI,
+        functionName: 'maxAllowedLeverage',
+      }),
+    ]);
+    return {
+      circuitBreakerActive: Boolean(cbActive),
+      maxAllowedLeverage: Number(maxLev || 3),
+    };
+  } catch {
+    return {
+      circuitBreakerActive: false,
+      maxAllowedLeverage: 3,
+    };
+  }
+}
+
+/**
+ * Toggles `setCircuitBreaker(bool _active)` on `GridSurgeonRegistry` on Avalanche Fuji.
+ */
+export async function toggleOnChainCircuitBreaker(
+  contractAddress: string,
+  active: boolean
+): Promise<{
+  ok: boolean;
+  circuitBreakerActive: boolean;
+  txHash: string | null;
+  finalityMs: number;
+}> {
+  const rpcUrl =
+    process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+  const { privateKey } = getOrCreateOperatorWallet();
+  const account = privateKeyToAccount(privateKey);
+
+  try {
+    const publicClient = createPublicClient({
+      chain: avalancheFuji,
+      transport: http(rpcUrl, { timeout: 8000 }),
+    });
+    const walletClient = createWalletClient({
+      account,
+      chain: avalancheFuji,
+      transport: http(rpcUrl, { timeout: 12000 }),
+    });
+
+    const t0 = Date.now();
+    const data = encodeFunctionData({
+      abi: GRID_SURGEON_ABI,
+      functionName: 'setCircuitBreaker',
+      args: [active],
+    });
+    const txHash = await walletClient.sendTransaction({
+      to: contractAddress as `0x${string}`,
+      data,
+    });
+    await publicClient.waitForTransactionReceipt({
+      hash: txHash,
+      timeout: 15000,
+    });
+    const finalityMs = Math.max(120, Date.now() - t0);
+
+    return {
+      ok: true,
+      circuitBreakerActive: active,
+      txHash,
+      finalityMs,
+    };
+  } catch {
+    return {
+      ok: false,
+      circuitBreakerActive: active,
+      txHash: null,
+      finalityMs: 0,
+    };
+  }
+}
+
+/**
+ * Queries `verifyTaskValidation(bytes32 _reasoningHash)` directly from `GridSurgeonRegistry` on Avalanche Fuji.
+ */
+export async function verifyDecisionHashOnChain(
+  contractAddress: string,
+  reasoningHash: string
+): Promise<{
+  ok: boolean;
+  isValid: boolean;
+  agentId: number;
+  validator: string;
+  reasoningHash: string;
+}> {
+  const rpcUrl =
+    process.env.AVALANCHE_RPC_URL || 'https://api.avax-test.network/ext/bc/C/rpc';
+  try {
+    const publicClient = createPublicClient({
+      chain: avalancheFuji,
+      transport: http(rpcUrl, { timeout: 6000 }),
+    });
+    const res = await publicClient.readContract({
+      address: contractAddress as `0x${string}`,
+      abi: GRID_SURGEON_ABI,
+      functionName: 'verifyTaskValidation',
+      args: [reasoningHash as `0x${string}`],
+    });
+    if (Array.isArray(res)) {
+      return {
+        ok: true,
+        isValid: Boolean(res[0]),
+        agentId: MINTED_AVA_LABS_AGENT_ID,
+        validator: String(res[2]),
+        reasoningHash,
+      };
+    }
+    return {
+      ok: false,
+      isValid: false,
+      agentId: MINTED_AVA_LABS_AGENT_ID,
+      validator: '0x0',
+      reasoningHash,
+    };
+  } catch {
+    return {
+      ok: false,
+      isValid: false,
+      agentId: MINTED_AVA_LABS_AGENT_ID,
+      validator: '0x0',
+      reasoningHash,
+    };
+  }
+}
+

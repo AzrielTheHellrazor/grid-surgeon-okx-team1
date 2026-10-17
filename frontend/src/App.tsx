@@ -224,6 +224,9 @@ export function App() {
   const [cliSkillFilter, setCliSkillFilter] = useState<string>('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [walletStatusMsg, setWalletStatusMsg] = useState<string | null>(null);
+  const [togglingBreaker, setTogglingBreaker] = useState<boolean>(false);
+  const [verifyingProof, setVerifyingProof] = useState<boolean>(false);
+  const [proofVerifiedMsg, setProofVerifiedMsg] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
@@ -313,6 +316,49 @@ export function App() {
       setErrorBanner('Action execution failed');
     } finally {
       setRunningAction(null);
+    }
+  };
+
+  const toggleCircuitBreaker = async () => {
+    if (togglingBreaker) return;
+    setTogglingBreaker(true);
+    try {
+      const res = await fetch(`${API_BASE}/circuit-breaker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.state) setState(data.state);
+      if (data.cycle) setCycle(data.cycle);
+      setActionToast(
+        data.circuitBreakerActive
+          ? 'Avalanche Circuit Breaker LOCKED (OKX Writes Blocked)'
+          : 'Avalanche Circuit Breaker UNLOCKED (OKX Writes Enabled)'
+      );
+      setTimeout(() => setActionToast(null), 5000);
+    } catch {
+      setErrorBanner('Circuit breaker tx failed');
+    } finally {
+      setTogglingBreaker(false);
+    }
+  };
+
+  const verifyProofOnChain = async (hash: string) => {
+    if (verifyingProof) return;
+    setVerifyingProof(true);
+    try {
+      const res = await fetch(`${API_BASE}/verify-hash/${hash}`);
+      const data = await res.json();
+      if (data.isValid) {
+        setProofVerifiedMsg(`ON-CHAIN VERIFIED ✓ (#${data.agentId})`);
+      } else {
+        setProofVerifiedMsg('PENDING INDEX');
+      }
+      setTimeout(() => setProofVerifiedMsg(null), 5000);
+    } catch {
+      setProofVerifiedMsg('RPC Error');
+    } finally {
+      setVerifyingProof(false);
     }
   };
 
@@ -981,6 +1027,26 @@ export function App() {
                 Treasury & Avalanche Chain
               </CardTitle>
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={togglingBreaker}
+                  onClick={toggleCircuitBreaker}
+                  className={cn(
+                    'metal-btn px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 disabled:opacity-50',
+                    b4.onChainState?.circuitBreakerActive
+                      ? 'border-rose-400/50 text-rose-300 bg-rose-500/15'
+                      : 'text-emerald-300'
+                  )}
+                >
+                  <Lock className="size-2.5" />
+                  <span>
+                    {togglingBreaker
+                      ? 'Tx...'
+                      : b4.onChainState?.circuitBreakerActive
+                      ? 'Breaker: LOCKED'
+                      : 'Breaker: OFF'}
+                  </span>
+                </button>
                 {finalityMs > 0 && (
                   <Badge variant="emerald">
                     <Zap className="size-2.5 mr-1 inline" />
@@ -1103,7 +1169,7 @@ export function App() {
                 </div>
               )}
 
-              {/* On-Chain Tx + Wallet Action Row */}
+              {/* On-Chain Tx + Verify Proof + Wallet Action Row */}
               <div className="glass-well rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
                 <div className="flex items-center gap-2 min-w-0">
                   <Badge variant="emerald">{b4.anchorRecord.status}</Badge>
@@ -1114,13 +1180,13 @@ export function App() {
                       rel="noreferrer"
                       className="text-zinc-200 hover:text-white underline truncate flex items-center gap-1"
                     >
-                      Tx: {b4.anchorRecord.txHash.slice(0, 12)}...
-                      {b4.anchorRecord.txHash.slice(-6)}
+                      Tx: {b4.anchorRecord.txHash.slice(0, 10)}...
+                      {b4.anchorRecord.txHash.slice(-5)}
                       <ExternalLink className="size-3 shrink-0" />
                     </a>
                   ) : (
                     <span className="text-zinc-400 truncate">
-                      Hash: {b4.anchorRecord.reasoningHash.slice(0, 14)}...
+                      Hash: {b4.anchorRecord.reasoningHash.slice(0, 12)}...
                     </span>
                   )}
                   <button
@@ -1138,13 +1204,33 @@ export function App() {
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleBrowserWalletAnchor}
-                  className="metal-btn px-3 py-1 rounded-md text-[11px] text-zinc-100 font-medium"
-                >
-                  {walletStatusMsg || 'Anchor via Wallet'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={verifyingProof}
+                    onClick={() =>
+                      verifyProofOnChain(b4.anchorRecord.reasoningHash)
+                    }
+                    className={cn(
+                      'metal-btn px-2.5 py-1 rounded-md text-[11px] font-medium',
+                      proofVerifiedMsg
+                        ? 'text-emerald-300 border-emerald-400/40'
+                        : 'text-zinc-200'
+                    )}
+                  >
+                    {verifyingProof
+                      ? 'Checking Fuji...'
+                      : proofVerifiedMsg || 'Verify Proof'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleBrowserWalletAnchor}
+                    className="metal-btn px-2.5 py-1 rounded-md text-[11px] text-zinc-100 font-medium"
+                  >
+                    {walletStatusMsg || 'Anchor Wallet'}
+                  </button>
+                </div>
               </div>
             </CardContent>
           </Card>

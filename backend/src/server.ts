@@ -11,6 +11,8 @@ import { executeLiveOkxAction } from './pipeline/phase3Execute';
 import {
   buildERC8004AgentPassport,
   getOrCreateOperatorWallet,
+  toggleOnChainCircuitBreaker,
+  verifyDecisionHashOnChain,
 } from './pipeline/phase4Anchor';
 import { ScenarioMode } from './pipeline/types';
 
@@ -223,6 +225,53 @@ app.post('/api/autopilot', (req, res) => {
     intervalSec: state.autoPilotIntervalSec,
     state,
   });
+});
+
+app.post('/api/circuit-breaker', async (req, res) => {
+  try {
+    const state = getSurgeonState();
+    const currentActive = Boolean(
+      state.latestCycle?.border4Anchor?.onChainState?.circuitBreakerActive
+    );
+    const nextActive =
+      typeof req.body?.active === 'boolean' ? req.body.active : !currentActive;
+
+    const cbRes = await toggleOnChainCircuitBreaker(
+      state.contractAddress,
+      nextActive
+    );
+    const cycle = await executeFullPipelineCycle('LIVE');
+    res.json({
+      ok: cbRes.ok,
+      circuitBreakerActive: cbRes.circuitBreakerActive,
+      txHash: cbRes.txHash,
+      finalityMs: cbRes.finalityMs,
+      cycle,
+      state: getSurgeonState(),
+    });
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Circuit breaker toggle error',
+    });
+  }
+});
+
+app.get('/api/verify-hash/:hash', async (req, res) => {
+  try {
+    const state = getSurgeonState();
+    const hash = String(req.params.hash || '');
+    const verified = await verifyDecisionHashOnChain(
+      state.contractAddress,
+      hash
+    );
+    res.json(verified);
+  } catch (err) {
+    res.status(500).json({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Verification error',
+    });
+  }
 });
 
 app.post('/api/contract', (req, res) => {

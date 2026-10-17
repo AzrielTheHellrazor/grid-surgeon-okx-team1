@@ -1,4 +1,5 @@
 import { runOkxCli } from '../okxCliRunner';
+import { readOnChainGovernorState } from './phase4Anchor';
 import {
   CliExecutionRecord,
   GridSurgeryEvent,
@@ -242,8 +243,15 @@ export async function runPhase3Execute(
     };
   }
 
-  // If a real grid bot is running on OKX and requires in-flight surgery, execute real `okx bot grid amend`
-  if (firstLiveGrid?.algoId && plan.requiresInFlightSurgery) {
+  // Pre-Trade On-Chain Governor Check on Avalanche Fuji (`emergencyCircuitBreaker`)
+  const onChainGov = await readOnChainGovernorState(state.contractAddress);
+
+  // If a real grid bot is running on OKX and requires in-flight surgery, execute real `okx bot grid amend` (only if On-Chain Circuit Breaker is OFF)
+  if (
+    !onChainGov.circuitBreakerActive &&
+    firstLiveGrid?.algoId &&
+    plan.requiresInFlightSurgery
+  ) {
     const prevMinPx = state.activeGridBot.minPx;
     const prevMaxPx = state.activeGridBot.maxPx;
     const amendArgs = [
@@ -297,8 +305,12 @@ export async function runPhase3Execute(
     }
   }
 
-  const primaryOkxAlgoOrOrdId = state.activeGridBot.algoId;
-  const actionExecuted = firstLiveGrid?.algoId
+  const primaryOkxAlgoOrOrdId = onChainGov.circuitBreakerActive
+    ? 'ONCHAIN_BREAKER_LOCKED'
+    : state.activeGridBot.algoId;
+  const actionExecuted = onChainGov.circuitBreakerActive
+    ? 'BLOCKED_BY_AVALANCHE_CIRCUIT_BREAKER (emergencyCircuitBreaker == true)'
+    : firstLiveGrid?.algoId
     ? `Live Bot #${firstLiveGrid.algoId} active in [${state.activeGridBot.minPx.toFixed(
         4
       )}, ${state.activeGridBot.maxPx.toFixed(4)}] | LiqPx $${verifiedLiqPx.toFixed(
@@ -325,7 +337,7 @@ export async function runPhase3Execute(
       outputContract:
         'Phase3ExecuteOutput (Live OKX Balances, Grid Orders, Positions, History & LiqPx)',
       GuaranteeNote:
-        '100% Live OKX CLI queries (account balance-all, earn savings balance, bot grid orders, liquidate-price, positions, positions-history) — Zero Mock Data.',
+        '100% Live OKX CLI queries + Pre-Trade Avalanche Circuit Breaker check — Zero Mock Data.',
     },
     executionMode: 'LIVE_AUTHENTICATED',
     actionExecuted,
@@ -340,12 +352,23 @@ export async function runPhase3Execute(
 }
 
 /**
- * Executes a real live user-initiated OKX CLI command (Earn Sweep, Earn Redeem, or Grid Bot Deploy/Amend)
+ * Executes a real live user-initiated OKX CLI command (Earn Sweep, Earn Redeem, or Grid Bot Deploy/Amend),
+ * gated by the live Avalanche Fuji `emergencyCircuitBreaker` state.
  */
 export async function executeLiveOkxAction(
   actionType: 'EARN_SWEEP' | 'EARN_REDEEM' | 'GRID_DEPLOY',
   state: PersistedSurgeonState
 ): Promise<{ ok: boolean; summary: string; records: CliExecutionRecord[] }> {
+  const gov = await readOnChainGovernorState(state.contractAddress);
+  if (gov.circuitBreakerActive) {
+    return {
+      ok: false,
+      summary:
+        'BLOCKED BY AVALANCHE CIRCUIT BREAKER (emergencyCircuitBreaker == true on Fuji)',
+      records: [],
+    };
+  }
+
   const records: CliExecutionRecord[] = [];
   const instId = state.selectedInstId || 'AVAX-USDT-SWAP';
   const grid = state.activeGridBot;
