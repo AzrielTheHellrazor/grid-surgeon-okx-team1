@@ -145,16 +145,22 @@ export async function runPhase3Execute(
   const realTradingEq = Number(tradingObj?.totalEq || 0);
   const baseCcy = sense.instId.split('-')[0] || 'AVAX';
   let avaxInventory = 0;
+  let avaxFrozen = 0;
   let usdtEquity = 0;
+  let usdtFrozen = 0;
   if (Array.isArray(tradingObj?.details)) {
     for (const d of tradingObj.details as Array<Record<string, string>>) {
       if (d.ccy === baseCcy) {
-        avaxInventory += Number(d.availEq || d.eq || d.availBal || 0);
+        avaxInventory += Number(d.eq || d.availEq || d.availBal || 0);
+        avaxFrozen += Number(d.frozenBal || 0);
       } else if (d.ccy === 'USDT') {
         usdtEquity += Number(d.eq || 0);
+        usdtFrozen += Number(d.frozenBal || 0);
       }
     }
   }
+  const avaxFree = Math.max(0, avaxInventory - avaxFrozen);
+  const usdtFree = Math.max(0, usdtEquity - usdtFrozen);
 
   let realFundingEq = 0;
   if (Array.isArray(fundingObj?.details)) {
@@ -194,6 +200,10 @@ export async function runPhase3Execute(
     ? spotOrdersRes.data
     : [];
   let firstLiveSpot = liveSpotOrders.length > 0 ? liveSpotOrders[0] : null;
+  const liveBuySpot =
+    liveSpotOrders.find((o) => (o.side || '').toLowerCase() === 'buy') || null;
+  const liveSellSpot =
+    liveSpotOrders.find((o) => (o.side || '').toLowerCase() === 'sell') || null;
   const gridRealizedPnl = Number(firstLiveGrid?.gridProfit || 0);
 
   const totalNav =
@@ -240,25 +250,21 @@ export async function runPhase3Execute(
       ? { minSellSz: 0.01, buySz: '0.0501', sellSz: '0.05', pxDec: 2 }
       : {
           minSellSz: 0.1,
-          buySz: usdtEquity >= 12 ? '0.501' : '0.1002',
-          sellSz: avaxInventory >= 0.5 ? '0.5' : '0.1',
+          buySz: usdtFree >= 10 ? '0.501' : '0.1002',
+          sellSz: avaxFree >= 0.5 ? '0.5' : '0.1',
           pxDec: 3,
         };
 
   const entryAnchorPx = state.activeGridBot?.entryFillPx || lastPx;
   const minProfitSellPx = Number(
-    (entryAnchorPx * 1.002).toFixed(spotSizing.pxDec)
+    (Math.min(entryAnchorPx, lastPx * 1.001) * 1.002).toFixed(spotSizing.pxDec)
   );
   const effectiveOptimalSellPx = Math.max(optimalSellPx, minProfitSellPx);
 
-  // 6. Autonomous Two-Leg Ping-Pong Maker State Machine (When no order is currently open)
-  if (
-    !onChainGov.circuitBreakerActive &&
-    !firstLiveGrid &&
-    !firstLiveSpot
-  ) {
-    if (avaxInventory >= spotSizing.minSellSz) {
-      // Leg B: Buy filled! Place Net-EV Fee-Protected Take-Profit Limit SELL
+  // 6. Autonomous Dual-Sided Ping-Pong Maker State Machine (Simultaneous Bid & Ask Straddle)
+  if (!onChainGov.circuitBreakerActive && !firstLiveGrid) {
+    // Leg B (Ask / Harvest Exit): If we have free coin inventory and no open sell order, place Limit SELL
+    if (!liveSellSpot && avaxFree >= spotSizing.minSellSz) {
       const sellPxStr = effectiveOptimalSellPx.toFixed(spotSizing.pxDec);
       const sellCreateRes = await runOkxCli<Array<Record<string, string>>>({
         args: [
@@ -286,7 +292,7 @@ export async function runPhase3Execute(
         Array.isArray(sellCreateRes.data) && sellCreateRes.data[0]?.ordId
           ? sellCreateRes.data[0].ordId
           : null;
-      if (newOrdId) {
+      if (newOrdId && !firstLiveSpot) {
         firstLiveSpot = {
           ordId: newOrdId,
           px: sellPxStr,
@@ -295,15 +301,15 @@ export async function runPhase3Execute(
           cTime: String(Date.now()),
         };
       }
-    } else if (
+    }
+
+    // Leg A (Bid / Seek Entry): If we have free USDT and no open buy order, place Limit BUY right below price
+    if (
       state.autoPilotEnabled &&
-      usdtEquity >= Number(spotSizing.buySz) * optimalBuyPx * 1.002
+      !liveBuySpot &&
+      usdtFree >= Number(spotSizing.buySz) * optimalBuyPx * 1.005 &&
+      avaxInventory * lastPx < Math.max(10, totalNav * 0.65)
     ) {
-      // Leg A: Seek entry on Optimal Inner Rung below Stoikov Micro-Price
-      if (state.activeGridBot?.pingPongPhase === 'HARVESTING_EXIT') {
-        state.activeGridBot.roundTripsCompleted =
-          (state.activeGridBot.roundTripsCompleted || 0) + 1;
-      }
       const buyPxStr = optimalBuyPx.toFixed(spotSizing.pxDec);
       const buyCreateRes = await runOkxCli<Array<Record<string, string>>>({
         args: [
@@ -440,9 +446,16 @@ export async function runPhase3Execute(
 
   // 8. In-Flight Order Surgery (Trailing Inner-Rung Amend or Corridor Recentering)
   if (!onChainGov.circuitBreakerActive) {
-    const spotSide = (firstLiveSpot?.side || 'buy').toLowerCase();
-    const currentSpotPx = Number(firstLiveSpot?.px || 0);
-    const spotSz = Number(firstLiveSpot?.sz || spotSizing.buySz);
+    const buyDrift = liveBuySpot?.px
+      ? Math.abs(Number(liveBuySpot.px) - optimalBuyPx)
+      : 0;
+    const trailSpot =
+      liveBuySpot && buyDrift >= 0.004
+        ? liveBuySpot
+        : liveSellSpot || firstLiveSpot;
+    const spotSide = (trailSpot?.side || 'buy').toLowerCase();
+    const currentSpotPx = Number(trailSpot?.px || 0);
+    const spotSz = Number(trailSpot?.sz || spotSizing.buySz);
     const rawTargetMakerPx =
       spotSide === 'sell' ? effectiveOptimalSellPx : optimalBuyPx;
     const decMult = Math.pow(10, spotSizing.pxDec);
@@ -455,7 +468,7 @@ export async function runPhase3Execute(
         ? Math.min(rawTargetMakerPx, maxAffordableBuyPx)
         : rawTargetMakerPx;
     const needsInnerRungTrail =
-      Boolean(firstLiveSpot?.ordId) &&
+      Boolean(trailSpot?.ordId) &&
       currentSpotPx > 0 &&
       targetMakerPx > 0 &&
       Math.abs(currentSpotPx - targetMakerPx) >= 0.004;
@@ -511,7 +524,7 @@ export async function runPhase3Execute(
         state.surgeryHistory.unshift(latestSurgery);
       }
     } else if (
-      firstLiveSpot?.ordId &&
+      trailSpot?.ordId &&
       targetMakerPx > 0 &&
       Math.abs(currentSpotPx - targetMakerPx) >= 0.001 &&
       (plan.requiresInFlightSurgery || needsInnerRungTrail)
@@ -523,7 +536,7 @@ export async function runPhase3Execute(
         '--instId',
         sense.spotInstId,
         '--ordId',
-        firstLiveSpot.ordId,
+        trailSpot.ordId,
         '--newPx',
         String(newSpotPx),
         '--json',
@@ -547,7 +560,7 @@ export async function runPhase3Execute(
         latestSurgery = {
           id: `surg-${Date.now()}`,
           timestamp: new Date().toISOString(),
-          algoId: firstLiveSpot.ordId,
+          algoId: trailSpot.ordId,
           triggerPx: lastPx,
           previousMinPx: currentSpotPx,
           previousMaxPx: prevMaxPx,
